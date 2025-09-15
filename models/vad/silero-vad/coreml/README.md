@@ -23,6 +23,9 @@ CoreML conversion of Silero VAD models optimized for Apple Silicon devices with 
 - **Internal Processing**: Splits input into 8 chunks of 512 samples each, processes sequentially, returns maximum probability
 - **Use Case**: Optimized for file processing and batch inference where speed matters more than real-time constraints
 
+Noisy-OR is better than max because it avoids overreacting to a single spurious spike while still preserving sensitivity to brief speech. It is also better than averaging because it doesn’t wash out short bursts of speech across mostly silent chunks. By directly modeling the probability that any sub-chunk contains speech, it matches the semantics of VAD windows more faithfully.
+
+
 ## Why 256ms Processing?****
 
 The 256ms model addresses a key trade-off in VAD deployment:
@@ -77,7 +80,7 @@ uv run python compare-models.py --audio-file ../FluidAudio/yc.wav  --include-256
 @misc{Silero VAD,
   author = {Silero Team},
   title = {Silero VAD: pre-trained enterprise-grade Voice Activity Detector (VAD), Number Detector and Language Classifier},
-  year = {2024},
+  year = {2024},****
   publisher = {GitHub},
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/snakers4/silero-vad}},
