@@ -19,7 +19,7 @@ We also share some of the conversion process on our [blog](https://inference.plu
 
 The models in this repository are organized using a standardized path structure:
 
-```
+```text
 models/
 │   ├── {class}/
 │   │   ├── {name}/

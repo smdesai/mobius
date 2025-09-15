@@ -1,0 +1,134 @@
+{
+  "standard": {
+    "original": {
+      "size_kb": 884.1416015625,
+      "total_latency_ms": 2.2275805473327637,
+      "chunk_time_ms": 0.07174361136651809,
+      "mse_error": 0.0,
+      "compression_ratio": 1.0,
+      "rtf": 448.91754922055196
+    },
+    "int8": {
+      "size_kb": 336.419921875,
+      "total_latency_ms": 2.489805221557617,
+      "chunk_time_ms": 0.08019401181128717,
+      "mse_error": 0.00038568992749787867,
+      "compression_ratio": 2.6280893136019787,
+      "rtf": 401.6378435315522
+    },
+    "mixed": {
+      "size_kb": 335.669921875,
+      "total_latency_ms": 2.1506309509277344,
+      "chunk_time_ms": 0.06927828634938886,
+      "mse_error": 0.00022982899099588394,
+      "compression_ratio": 2.633961352938096,
+      "rtf": 464.9798235111525
+    },
+    "palette_2bit": {
+      "size_kb": 102.2939453125,
+      "total_latency_ms": 2.231156826019287,
+      "chunk_time_ms": 0.07187551067721458,
+      "mse_error": 0.14277242124080658,
+      "compression_ratio": 8.643146951283544,
+      "rtf": 448.1979878501627
+    },
+    "palette_4bit": {
+      "size_kb": 178.4921875,
+      "total_latency_ms": 2.115309238433838,
+      "chunk_time_ms": 0.06813887626894059,
+      "mse_error": 0.0068008070811629295,
+      "compression_ratio": 4.953391036022235,
+      "rtf": 472.744117895686
+    },
+    "palette_6bit": {
+      "size_kb": 254.431640625,
+      "total_latency_ms": 2.0871400833129883,
+      "chunk_time_ms": 0.06722250292378086,
+      "mse_error": 0.0004432057903613895,
+      "compression_ratio": 3.4749671832899613,
+      "rtf": 479.124524508516
+    },
+    "palette_8bit": {
+      "size_kb": 333.0009765625,
+      "total_latency_ms": 2.147364616394043,
+      "chunk_time_ms": 0.06915138613793156,
+      "mse_error": 1.3337470591068268e-05,
+      "compression_ratio": 2.6550720982542164,
+      "rtf": 465.6870996036284
+    },
+    "pruned_int8": {
+      "size_kb": 334.9833984375,
+      "total_latency_ms": 2.2041797637939453,
+      "chunk_time_ms": 0.07098528646653698,
+      "mse_error": 0.0013897495809942484,
+      "compression_ratio": 2.639359459861292,
+      "rtf": 453.6835045970795
+    }
+  },
+  "256ms": {
+    "original": {
+      "size_kb": 1018.7470703125,
+      "total_latency_ms": 0.7701396942138672,
+      "chunk_time_ms": 0.19246935844421387,
+      "mse_error": 0.0,
+      "compression_ratio": 1.0,
+      "rtf": 1298.4657296761811
+    },
+    "int8": {
+      "size_kb": 471.494140625,
+      "total_latency_ms": 0.9233355522155762,
+      "chunk_time_ms": 0.2305150032043457,
+      "mse_error": 0.001488292240537703,
+      "compression_ratio": 2.16067811354363,
+      "rtf": 1083.0298883222517
+    },
+    "mixed": {
+      "size_kb": 470.744140625,
+      "total_latency_ms": 0.7613062858581543,
+      "chunk_time_ms": 0.19019842147827148,
+      "mse_error": 0.0004615187644958496,
+      "compression_ratio": 2.1641205538106636,
+      "rtf": 1313.5317789643454
+    },
+    "palette_2bit": {
+      "size_kb": 237.416015625,
+      "total_latency_ms": 0.7697105407714844,
+      "chunk_time_ms": 0.19228458404541016,
+      "mse_error": 0.7780360579490662,
+      "compression_ratio": 4.290978717803171,
+      "rtf": 1299.1896914880435
+    },
+    "palette_4bit": {
+      "size_kb": 313.6142578125,
+      "total_latency_ms": 0.7533431053161621,
+      "chunk_time_ms": 0.18822252750396729,
+      "mse_error": 0.0042989375069737434,
+      "compression_ratio": 3.2484080201531413,
+      "rtf": 1327.41640952607
+    },
+    "palette_6bit": {
+      "size_kb": 389.5537109375,
+      "total_latency_ms": 0.7591128349304199,
+      "chunk_time_ms": 0.18962323665618896,
+      "mse_error": 0.0007217526435852051,
+      "compression_ratio": 2.6151645888850172,
+      "rtf": 1317.3272193344744
+    },
+    "palette_8bit": {
+      "size_kb": 468.123046875,
+      "total_latency_ms": 0.7515192031860352,
+      "chunk_time_ms": 0.18774569034576416,
+      "mse_error": 3.527402805048041e-05,
+      "compression_ratio": 2.176237801392696,
+      "rtf": 1330.637987373497
+    },
+    "pruned_int8": {
+      "size_kb": 470.064453125,
+      "total_latency_ms": 0.7511496543884277,
+      "chunk_time_ms": 0.18762946128845215,
+      "mse_error": 0.0019415735732764006,
+      "compression_ratio": 2.167249753815343,
+      "rtf": 1331.2926314453032
+    }
+  }
+}

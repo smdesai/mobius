@@ -1,0 +1,58 @@
+{
+  "original": {
+    "size_kb": 884.1240234375,
+    "inference_time_ms": 0.07282018661499023,
+    "mse_error": 0.0,
+    "compression_ratio": 1.0,
+    "rtfx": 0.0020227829615275064
+  },
+  "int8": {
+    "size_kb": 336.40234375,
+    "inference_time_ms": 0.066680908203125,
+    "mse_error": 0.0007201830158010125,
+    "compression_ratio": 2.628174386604582,
+    "rtfx": 0.0018522474500868055
+  },
+  "mixed": {
+    "size_kb": 335.65234375,
+    "inference_time_ms": 0.06875753402709961,
+    "mse_error": 0.0003500446619000286,
+    "compression_ratio": 2.6340469235513866,
+    "rtfx": 0.0019099315007527669
+  },
+  "palette_2bit": {
+    "size_kb": 102.2763671875,
+    "inference_time_ms": 0.06845951080322266,
+    "mse_error": 0.15354716777801514,
+    "compression_ratio": 8.644460570413727,
+    "rtfx": 0.001901653077867296
+  },
+  "palette_4bit": {
+    "size_kb": 178.474609375,
+    "inference_time_ms": 0.0702214241027832,
+    "mse_error": 0.009186876937747002,
+    "compression_ratio": 4.953780409065541,
+    "rtfx": 0.0019505951139662
+  },
+  "palette_6bit": {
+    "size_kb": 254.4140625,
+    "inference_time_ms": 0.06892204284667969,
+    "mse_error": 0.0026865394320338964,
+    "compression_ratio": 3.475138185168125,
+    "rtfx": 0.0019145011901855469
+  },
+  "palette_8bit": {
+    "size_kb": 332.9833984375,
+    "inference_time_ms": 0.06714820861816406,
+    "mse_error": 3.564450889825821e-05,
+    "compression_ratio": 2.655159469169294,
+    "rtfx": 0.0018652280171712239
+  },
+  "pruned_int8": {
+    "size_kb": 334.9658203125,
+    "inference_time_ms": 0.0668191909790039,
+    "mse_error": 0.0016690923366695642,
+    "compression_ratio": 2.6394454891328114,
+    "rtfx": 0.001856088638305664
+  }
+}
