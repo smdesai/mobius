@@ -4,6 +4,8 @@ Checkpoint from this commit from [Silero-VAD](https://github.com/snakers4/silero
 
 CoreML conversion of Silero VAD models optimized for Apple Silicon devices with multiple deployment options.
 
+Models are deployed on [Huggingface](https://huggingface.co/FluidInference/silero-vad-coreml)
+
 ## Model Variants
 
 ### 1. Modular Pipeline (3-stage)
