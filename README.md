@@ -7,17 +7,17 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FluidInference/mobius)
 [![Blog](https://img.shields.io/badge/Blog-Read%20More-blue)](https://inference.plus/)
 
-A möbius strip, a surface with only one side and one boundary. What seems like two sides is really one continuous path, reflecting how models in different frameworks remain a single, unified structure as they transform across formats.
+A möbius strip is a surface with only one side and one boundary. What looks like two sides is really one continuous path — the same way models stay unified as they move across formats. Its quite easy to run AI on NVIDIA GPUs, we want to bring the same experience to the edge, across a fragmented set of devices and chips.
 
-Running AI on the edge is difficult and time consuming. We are automating that process with the help of our coding agents and SFT models, `möbius`. We aim to open-source the `möbius` platform in 2026. In the meantime, we will be sharing code, data and models that `möbius` produces from open-sourced models in this repo.
+Running AI on the edge is messy and slow. It’s easy to spin up models on NVIDIA GPUs, but the edge is a different story — fragmented devices, weird accelerators, and lots of friction. `möbius` is our attempt to smooth that out, with coding agents and SFT models doing the heavy lifting. Developers just can integrate it with just a couple lines of code, easier than making an API call.
 
-The current focus is converting small models to run on AI Accelerators like ANE and NPUs, and LLMs on edge GPUs. 
+Right now we’re focused on small models for AI accelerators (ANE, NPUs) and LLMs on edge GPUs.
 
-We also share some of the conversion process on our [blog](https://inference.plus/).
+We also share bits of the journey on our [blog](https://inference.plus/).
 
 ## Models Folder Structure
 
-The models in this repository are organized using a standardized path structure:
+The models in this repository are organized using a standardized path structure. `uv` solves the problem with different models and package dependencies, each desintation for each model will have their own `pyproject.toml` script, like a self-encompased repository.
 
 ```text
 models/
@@ -26,14 +26,9 @@ models/
 │   │   │   └── {destination}
 ```
 
-### Path Components
-
-This structure allows for easy navigation and organization of converted models across different frameworks and target platforms.
-
 - **class**: The model class or variant (e.g., `vad`, `llm`, `vllm`, `tts`, `stt`, etc..)
 - **name**: Specific model name or version identifier
 - **destination**: Target runtime or format (e.g., `coreml`, `onnx`, `openvino`)
-
 
 ## Usage
 
