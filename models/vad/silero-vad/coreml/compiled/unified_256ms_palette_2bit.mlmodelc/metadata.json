@@ -50,17 +50,16 @@
       "Ios16.sqrt" : 8,
       "Transpose" : 16,
       "Ios16.sub" : 2,
-      "Ios16.log" : 8,
       "Ios16.sigmoid" : 8,
       "Ios16.conv" : 48,
-      "Ios16.add" : 24,
-      "Ios16.relu" : 32,
+      "Ios16.add" : 16,
+      "Ios16.relu" : 40,
       "Squeeze" : 18,
       "Ios16.clip" : 32,
       "Ios16.lstm" : 8,
       "Ios16.pow" : 16,
       "ExpandDims" : 26,
-      "Ios16.reduceMean" : 8
+      "Pad" : 8
     },
     "computePrecision" : "Mixed (Float16, Float32, Int32)",
     "stateSchema" : [

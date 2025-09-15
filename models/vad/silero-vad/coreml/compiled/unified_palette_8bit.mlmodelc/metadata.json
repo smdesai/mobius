@@ -38,7 +38,7 @@
     "modelParameters" : [
 
     ],
-    "author" : "Silero Team",
+    "author" : "Fluid Infernece + Silero Team",
     "specificationVersion" : 7,
     "storagePrecision" : "Mixed (Float16, Float32, Palettized (8 bits))",
     "mlProgramOperationTypeHistogram" : {
@@ -47,17 +47,16 @@
       "Ios16.constexprLutToDense" : 7,
       "Ios16.sqrt" : 1,
       "Transpose" : 2,
-      "Ios16.log" : 1,
       "Ios16.sigmoid" : 1,
       "Ios16.conv" : 6,
-      "Ios16.add" : 3,
-      "Ios16.relu" : 4,
+      "Ios16.add" : 2,
+      "Ios16.relu" : 5,
       "Squeeze" : 4,
       "Ios16.clip" : 4,
       "Ios16.lstm" : 1,
       "Ios16.pow" : 2,
       "ExpandDims" : 5,
-      "Ios16.reduceMean" : 1
+      "Pad" : 1
     },
     "computePrecision" : "Mixed (Float16, Float32, Int32)",
     "stateSchema" : [
@@ -108,7 +107,7 @@
       }
     ],
     "userDefinedMetadata" : {
-      "com.github.apple.coremltools.conversion_date" : "2025-09-14",
+      "com.github.apple.coremltools.conversion_date" : "2025-09-15",
       "com.github.apple.coremltools.source" : "torch==2.7.0",
       "com.github.apple.coremltools.version" : "9.0b1",
       "com.github.apple.coremltools.source_dialect" : "TorchScript"

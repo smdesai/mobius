@@ -8,13 +8,14 @@ from convert_model_components import COREML_AUTHOR, STFTModel, EncoderModel, Dec
 
 class UnifiedVADModel(nn.Module):
     """Unified VAD model combining STFT, Encoder, and Decoder"""
-    def __init__(self, state_dict):
+
+    def __init__(self, state_dict, stft_hop_length=128, stft_pad=64, encoder_configs=None):
         super().__init__()
 
         # Initialize all three sub-models
         stft_weights = state_dict["_model.stft.forward_basis_buffer"]
-        self.stft = STFTModel(stft_weights)
-        self.encoder = EncoderModel(state_dict)
+        self.stft = STFTModel(stft_weights, hop_length=stft_hop_length, pad=stft_pad)
+        self.encoder = EncoderModel(state_dict, layer_configs=encoder_configs)
         self.decoder = DecoderModel(state_dict)
 
     def forward(self, audio_input, hidden_state, cell_state):
@@ -27,13 +28,14 @@ class UnifiedVADModel(nn.Module):
 
 class UnifiedVADModel256ms(nn.Module):
     """Unified VAD model for 256ms processing (4160 samples: 64 context + 4096 current at 16kHz)"""
-    def __init__(self, state_dict):
+
+    def __init__(self, state_dict, stft_hop_length=128, stft_pad=64, encoder_configs=None):
         super().__init__()
 
         # Initialize all three sub-models (same as standard model)
         stft_weights = state_dict["_model.stft.forward_basis_buffer"]
-        self.stft = STFTModel(stft_weights)
-        self.encoder = EncoderModel(state_dict)
+        self.stft = STFTModel(stft_weights, hop_length=stft_hop_length, pad=stft_pad)
+        self.encoder = EncoderModel(state_dict, layer_configs=encoder_configs)
         self.decoder = DecoderModel(state_dict)
 
     def forward(self, audio_input, hidden_state, cell_state):
@@ -78,11 +80,16 @@ class UnifiedVADModel256ms(nn.Module):
 
         return final_output, h, c
 
-def convert_unified_model(state_dict, output_dir, version_suffix):
+def convert_unified_model(state_dict, output_dir, version_suffix, stft_hop_length, stft_pad, encoder_configs):
     """Convert unified VAD model (STFT + Encoder + Decoder) to CoreML"""
     print("Converting Unified VAD model...")
 
-    model = UnifiedVADModel(state_dict)
+    model = UnifiedVADModel(
+        state_dict,
+        stft_hop_length=stft_hop_length,
+        stft_pad=stft_pad,
+        encoder_configs=encoder_configs,
+    )
     model.eval()
 
     # Create example inputs 64 samples of  context from previous audio, 512 of current audio
@@ -121,11 +128,16 @@ def convert_unified_model(state_dict, output_dir, version_suffix):
     return output_path
 
 
-def convert_unified_model_256ms(state_dict, output_dir, version_suffix):
+def convert_unified_model_256ms(state_dict, output_dir, version_suffix, stft_hop_length, stft_pad, encoder_configs):
     """Convert unified VAD model for 256ms processing (4160 samples: 64 context + 4096 current) to CoreML"""
     print("Converting Unified VAD model (256ms)...")
 
-    model = UnifiedVADModel256ms(state_dict)
+    model = UnifiedVADModel256ms(
+        state_dict,
+        stft_hop_length=stft_hop_length,
+        stft_pad=stft_pad,
+        encoder_configs=encoder_configs,
+    )
     model.eval()
 
     # Create example inputs for 256ms (4160 samples: 64 context + 4096 current at 16kHz)
@@ -193,6 +205,18 @@ def convert_silero_vad_coreml(output_dir="./coreml_models", include_256ms=False)
 
     converted_models = []
 
+    # Extract architectural parameters used during conversion
+    stft_module = model._model.stft
+    hop_length = int(stft_module.hop_length)
+    pad_tuple = tuple(stft_module.padding.padding) if hasattr(stft_module, "padding") else (0, 0)
+    stft_pad = int(pad_tuple[1] if len(pad_tuple) > 1 else pad_tuple[0])
+
+    encoder_configs = []
+    for _, block in model._model.encoder.named_children():
+        stride = int(block.reparam_conv.stride[0])
+        padding = int(block.reparam_conv.padding[0])
+        encoder_configs.append({"stride": stride, "padding": padding})
+
     try:
         # Convert STFT model
         stft_path = convert_stft_model(cleaned_dict, output_dir, version_suffix)
@@ -207,12 +231,26 @@ def convert_silero_vad_coreml(output_dir="./coreml_models", include_256ms=False)
         converted_models.append(decoder_path)
 
         # Convert Unified model
-        unified_path = convert_unified_model(cleaned_dict, output_dir, version_suffix)
+        unified_path = convert_unified_model(
+            cleaned_dict,
+            output_dir,
+            version_suffix,
+            stft_hop_length=hop_length,
+            stft_pad=stft_pad,
+            encoder_configs=encoder_configs,
+        )
         converted_models.append(unified_path)
 
         # Convert Unified 256ms model if requested
         if include_256ms:
-            unified_256ms_path = convert_unified_model_256ms(cleaned_dict, output_dir, version_suffix)
+            unified_256ms_path = convert_unified_model_256ms(
+                cleaned_dict,
+                output_dir,
+                version_suffix,
+                stft_hop_length=hop_length,
+                stft_pad=stft_pad,
+                encoder_configs=encoder_configs,
+            )
             converted_models.append(unified_256ms_path)
 
         print(f"\n✅ Successfully converted Silero VAD to CoreML!")

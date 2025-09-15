@@ -13,161 +13,66 @@ import subprocess
 from datetime import datetime
 
 
-class PyTorchVADReference:
-    """Reference implementation to extract intermediate outputs from PyTorch model"""
+class PyTorchJITWrapper:
+    """Wrapper around the TorchScript Silero VAD model used for comparisons."""
 
-    def __init__(self, model):
+    def __init__(self, model, sample_rate=16000, chunk_size=512):
         self.model = model
-        self.state_dict = model.state_dict()
-        self.hidden_state = None
-        self.cell_state = None
-        self.context = None
-        self._last_batch_size = None
+        self.sample_rate = sample_rate
+        self.chunk_size = chunk_size
+        self.model.eval()
+        # Track the display name so plots can show the exact model identifier
+        self.model_name = "silero-vad-jit"
+        self.reset_states()
 
     def reset_states(self, batch_size=1):
-        """Reset LSTM states and context"""
-        self.hidden_state = torch.zeros(batch_size, 128)
-        self.cell_state = torch.zeros(batch_size, 128)
-        self.context = torch.zeros(batch_size, 64)
-        self._last_batch_size = batch_size
+        """Reset internal model states."""
+        if hasattr(self.model, "reset_states"):
+            # TorchScript model keeps its own internal state; batch_size kept for compatibility
+            self.model.reset_states()
 
-    def manual_stft(self, x):
-        """Manual STFT implementation using the model's basis"""
-        stft_basis = self.state_dict["_model.stft.forward_basis_buffer"]
-        # stft_basis shape: [258, 1, 256]
+    def _ensure_tensor(self, audio_chunk):
+        """Convert input chunk to the expected torch.Tensor format."""
+        if isinstance(audio_chunk, np.ndarray):
+            audio_chunk = torch.from_numpy(audio_chunk)
 
-        # Apply STFT as convolution
-        # Input x shape: [batch, samples]
-        x = x.unsqueeze(1)  # Add channel dimension: [batch, 1, samples]
+        if audio_chunk.dim() == 1:
+            audio_chunk = audio_chunk.unsqueeze(0)
 
-        # Apply convolution with stride=256 (hop length) and appropriate padding
-        stft_out = F.conv1d(x, stft_basis, stride=256, padding=128)
+        if audio_chunk.dim() != 2:
+            raise ValueError(
+                f"Expected audio chunk with shape [batch, samples], got {tuple(audio_chunk.shape)}"
+            )
 
-        # Split real/imaginary parts and compute magnitude
-        # stft_out shape: [batch, 258, time_steps]
-        # 258 = 129 real + 129 imaginary components
-        real_part = stft_out[:, :129, :]
-        imag_part = stft_out[:, 129:, :]
-
-        # Compute magnitude
-        magnitude = torch.sqrt(real_part**2 + imag_part**2 + 1e-8)
-
-        # Apply log
-        stft_out = torch.log(magnitude + 1e-8)
-
-        return stft_out
-
-    def manual_encoder(self, x):
-        """Manual encoder implementation using extracted weights"""
-        # Apply 4 encoder layers
-        for i in range(4):
-            weight_key = f"_model.encoder.{i}.reparam_conv.weight"
-            bias_key = f"_model.encoder.{i}.reparam_conv.bias"
-
-            weight = self.state_dict[weight_key]
-            bias = self.state_dict[bias_key]
-
-            # Apply conv1d
-            x = F.conv1d(x, weight, bias, padding=1)
-            # Apply ReLU activation (assumed based on typical VAD architectures)
-            x = F.relu(x)
-            # Clip to prevent overflow (matching CoreML implementation)
-            x = torch.clamp(x, max=10000.0)
-
-        return x
-
-    def manual_decoder(self, x):
-        """Manual decoder implementation with LSTM and final conv"""
-        # Convert from [batch, channels, seq] to [batch, seq, channels] for LSTM
-        x = x.transpose(1, 2)
-
-        # LSTM weights
-        weight_ih = self.state_dict["_model.decoder.rnn.weight_ih"]
-        weight_hh = self.state_dict["_model.decoder.rnn.weight_hh"]
-        bias_ih = self.state_dict["_model.decoder.rnn.bias_ih"]
-        bias_hh = self.state_dict["_model.decoder.rnn.bias_hh"]
-
-        # Standard LSTM implementation (fixed from incorrect GRU-like formulation)
-        batch_size, seq_len, _ = x.shape
-
-        if self.hidden_state is None or self.hidden_state.shape[0] != batch_size:
-            self.reset_states(batch_size)
-
-        outputs = []
-        h = self.hidden_state
-        c = self.cell_state
-
-        for t in range(seq_len):
-            x_t = x[:, t, :]  # [batch, input_size]
-
-            # Standard LSTM gates
-            gi = F.linear(x_t, weight_ih, bias_ih)
-            gh = F.linear(h, weight_hh, bias_hh)
-            i_i, i_f, i_g, i_o = gi.chunk(4, 1)
-            h_i, h_f, h_g, h_o = gh.chunk(4, 1)
-
-            # Standard LSTM formulation
-            inputgate = torch.sigmoid(i_i + h_i)
-            forgetgate = torch.sigmoid(i_f + h_f)
-            cellgate = torch.tanh(i_g + h_g)
-            outputgate = torch.sigmoid(i_o + h_o)
-
-            # Standard LSTM cell update
-            c = forgetgate * c + inputgate * cellgate
-            h = outputgate * torch.tanh(c)
-
-            outputs.append(h)
-
-        # Update states
-        self.hidden_state = h
-        self.cell_state = c
-
-        # Stack outputs
-        lstm_out = torch.stack(outputs, dim=1)  # [batch, seq, hidden]
-
-        # Convert back to [batch, channels, seq]
-        lstm_out = lstm_out.transpose(1, 2)
-
-        # Final conv layer
-        final_weight = self.state_dict["_model.decoder.decoder.2.weight"]
-        final_bias = self.state_dict["_model.decoder.decoder.2.bias"]
-
-        output = F.conv1d(lstm_out, final_weight, final_bias)
-        output = torch.sigmoid(output)
-
-        # Global average pooling to get single value per batch
-        output = output.mean(dim=2, keepdim=True)
-
-        return output, h, c
+        return audio_chunk.float()
 
     def forward_with_intermediates(self, audio_chunk):
-        """Forward pass with intermediate outputs"""
-        batch_size = audio_chunk.shape[0]
+        """Run the TorchScript model and expose the final probability output."""
+        audio_tensor = self._ensure_tensor(audio_chunk)
+        batch_size = audio_tensor.shape[0]
+        outputs = []
 
-        # Add context (64 samples for 16kHz)
-        if self.context is None or self.context.shape[0] != batch_size:
-            self.context = torch.zeros(batch_size, 64)
+        for batch_idx in range(batch_size):
+            chunk = audio_tensor[batch_idx]
 
-        x_with_context = torch.cat([self.context, audio_chunk], dim=1)
+            if chunk.shape[-1] < self.chunk_size:
+                chunk = F.pad(chunk, (0, self.chunk_size - chunk.shape[-1]))
+            elif chunk.shape[-1] > self.chunk_size:
+                chunk = chunk[: self.chunk_size]
 
-        # Update context for next iteration
-        self.context = x_with_context[:, -64:]
+            with torch.no_grad():
+                prob = self.model(chunk, self.sample_rate)
 
-        # Step 1: STFT
-        stft_output = self.manual_stft(x_with_context)
+            outputs.append(prob.detach().cpu())
 
-        # Step 2: Encoder
-        encoder_output = self.manual_encoder(stft_output)
-
-        # Step 3: Decoder
-        final_output, new_h, new_c = self.manual_decoder(encoder_output)
+        final_output = torch.stack(outputs).view(batch_size, 1)
 
         return {
-            'stft_output': stft_output,
-            'encoder_output': encoder_output,
+            'stft_output': None,
+            'encoder_output': None,
             'final_output': final_output,
-            'hidden_state': new_h,
-            'cell_state': new_c
+            'hidden_state': None,
+            'cell_state': None
         }
 
 
@@ -269,6 +174,8 @@ class UnifiedCoreMLWrapper:
             raise FileNotFoundError(f"Unified model not found: {unified_path}")
 
         self.unified_model = ct.models.MLModel(unified_path, compute_units=ct.ComputeUnit.CPU_AND_NE)
+        package_name, _ = os.path.splitext(os.path.basename(unified_path))
+        self.model_name = package_name
 
         # Initialize states
         self.hidden_state = np.zeros((1, 128), dtype=np.float32)
@@ -446,6 +353,8 @@ class UnifiedCoreML256msWrapper:
             raise FileNotFoundError(f"Unified 256ms model not found: {unified_256ms_path}")
 
         self.unified_256ms_model = ct.models.MLModel(unified_256ms_path, compute_units=ct.ComputeUnit.CPU_AND_NE)
+        package_name, _ = os.path.splitext(os.path.basename(unified_256ms_path))
+        self.model_name = package_name
 
         # Initialize states
         self.hidden_state = np.zeros((1, 128), dtype=np.float32)
@@ -673,7 +582,9 @@ def process_full_audio(pytorch_ref, unified_wrapper, audio_tensor, chunk_size=51
         'pytorch_times': np.array(pytorch_times),
         'unified_times': np.array(unified_times),
         'chunk_size': chunk_size,
-        'sample_rate': 16000
+        'sample_rate': 16000,
+        'pytorch_model_name': getattr(pytorch_ref, 'model_name', 'PyTorch'),
+        'unified_model_name': getattr(unified_wrapper, 'model_name', 'Unified CoreML')
     }
 
     if debug_intermediate:
@@ -793,7 +704,9 @@ def process_full_audio_batched(pytorch_ref, unified_wrapper, audio_tensor, chunk
         'batch_processing': True,
         'max_batch_size': max_batch_size,
         'pytorch_total_time': pytorch_total_time,
-        'unified_total_time': unified_total_time
+        'unified_total_time': unified_total_time,
+        'pytorch_model_name': getattr(pytorch_ref, 'model_name', 'PyTorch'),
+        'unified_model_name': getattr(unified_wrapper, 'model_name', 'Unified CoreML')
     }
 
     if debug_intermediate:
@@ -1020,6 +933,8 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
     pytorch_probs = results['pytorch_outputs']
     unified_probs = results['unified_outputs']
     timestamps = results['timestamps']
+    pytorch_name = results.get('pytorch_model_name', 'PyTorch')
+    unified_name = results.get('unified_model_name', 'Unified')
 
     # Set matplotlib backend for non-interactive use
     matplotlib.use('Agg')
@@ -1029,12 +944,10 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
 
     # Time series comparison - full width top row
     plt.subplot(2, 1, 1)
-    plt.plot(timestamps, pytorch_probs, label='PyTorch', color='blue', linewidth=1.5)
-    plt.plot(timestamps, unified_probs, label='Unified', color='orange', linewidth=1.5)
-    diff = pytorch_probs - unified_probs
-    plt.plot(timestamps, diff, label='Difference', color='red', linewidth=1.2, linestyle='--', alpha=0.8)
+    plt.plot(timestamps, pytorch_probs, label=pytorch_name, color='blue', linewidth=1.5)
+    plt.plot(timestamps, unified_probs, label=unified_name, color='orange', linewidth=1.5)
     plt.axhline(y=0, color='gray', linestyle='-', alpha=0.3)
-    plt.ylabel('VAD Probability / Difference')
+    plt.ylabel('VAD Probability')
     plt.xlabel('Time (s)')
     plt.title('Standard Models: Time Series Comparison')
     plt.legend(loc='best')
@@ -1047,15 +960,15 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
     plt.axhline(y=0, color='black', linestyle='--', alpha=0.5)
     plt.ylabel('Difference')
     plt.xlabel('Time (s)')
-    plt.title('PyTorch - Unified')
+    plt.title(f'{pytorch_name} - {unified_name}')
     plt.grid(True, alpha=0.3)
 
     # Correlation plot - bottom right
     plt.subplot(2, 2, 4)
     plt.scatter(pytorch_probs, unified_probs, alpha=0.4, s=1, color='orange')
     plt.plot([0, 1], [0, 1], 'k--', alpha=0.5)
-    plt.xlabel('PyTorch')
-    plt.ylabel('Unified CoreML')
+    plt.xlabel(pytorch_name)
+    plt.ylabel(unified_name)
     corr = stats_dict['comparison']['correlation']
     plt.title(f'Correlation (r={corr:.3f})')
     plt.grid(True, alpha=0.3)
@@ -1072,6 +985,8 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
         unified_256ms_probs = results['unified_256ms_outputs']
         aligned_pytorch = stats_dict['comparison_256ms']['aligned_pytorch_outputs']
         unified_256ms_aligned = unified_256ms_probs[:len(aligned_pytorch)]
+        unified_256ms_name = results.get('unified_256ms_model_name', '256ms Model')
+        pytorch_noisy_or_label = f"{pytorch_name} (8-chunk noisy-OR)"
 
         # Create timestamps for 256ms chunks
         pytorch_chunks_per_256ms = stats_dict['comparison_256ms']['pytorch_chunks_per_256ms']
@@ -1087,12 +1002,10 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
 
         # Time series comparison - full width top row
         plt.subplot(2, 1, 1)
-        plt.plot(timestamps_256ms, aligned_pytorch, label='PyTorch (8-chunk noisy-OR)', color='blue', linewidth=1.5)
-        plt.plot(timestamps_256ms, unified_256ms_aligned, label='256ms Model', color='green', linewidth=1.5)
-        diff_256ms = aligned_pytorch - unified_256ms_aligned
-        plt.plot(timestamps_256ms, diff_256ms, label='Difference', color='red', linewidth=1.2, linestyle='--', alpha=0.8)
+        plt.plot(timestamps_256ms, aligned_pytorch, label=pytorch_noisy_or_label, color='blue', linewidth=1.5)
+        plt.plot(timestamps_256ms, unified_256ms_aligned, label=unified_256ms_name, color='green', linewidth=1.5)
         plt.axhline(y=0, color='gray', linestyle='-', alpha=0.3)
-        plt.ylabel('VAD Probability / Difference')
+        plt.ylabel('VAD Probability')
         plt.xlabel('Time (s)')
         plt.title('256ms Model: Time Series Comparison')
         plt.legend(loc='best')
@@ -1105,17 +1018,17 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
         plt.axhline(y=0, color='black', linestyle='--', alpha=0.5)
         plt.ylabel('Difference')
         plt.xlabel('Time (s)')
-        plt.title('PyTorch (noisy-OR) - 256ms')
+        plt.title(f'{pytorch_name} (noisy-OR) - {unified_256ms_name}')
         plt.grid(True, alpha=0.3)
 
         # Correlation plot - bottom right
         plt.subplot(2, 2, 4)
         plt.scatter(aligned_pytorch, unified_256ms_aligned, alpha=0.7, s=20, color='green')
         plt.plot([0, 1], [0, 1], 'k--', alpha=0.5)
-        plt.xlabel('PyTorch (8-chunk noisy-OR)')
-        plt.ylabel('256ms Model')
+        plt.xlabel(pytorch_noisy_or_label)
+        plt.ylabel(unified_256ms_name)
         corr_256ms = stats_dict['comparison_256ms']['correlation']
-        plt.title(f'256ms Correlation (r={corr_256ms:.3f})')
+        plt.title(f'{unified_256ms_name} Correlation (r={corr_256ms:.3f})')
         plt.grid(True, alpha=0.3)
 
         plt.tight_layout()
@@ -1137,8 +1050,8 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
 
         # RTF comparison over time
         plt.subplot(1, 2, 1)
-        plt.plot(timestamps, pytorch_rtf, color='blue', alpha=0.7, label='PyTorch')
-        plt.plot(timestamps, unified_rtf, color='orange', alpha=0.7, label='Unified')
+        plt.plot(timestamps, pytorch_rtf, color='blue', alpha=0.7, label=pytorch_name)
+        plt.plot(timestamps, unified_rtf, color='orange', alpha=0.7, label=unified_name)
 
         if 'unified_256ms_times' in results:
             unified_256ms_times = results['unified_256ms_times']
@@ -1146,7 +1059,8 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
             audio_duration_per_256ms_chunk = unified_256ms_chunk_size / sample_rate
             unified_256ms_rtf = audio_duration_per_256ms_chunk / unified_256ms_times
             timestamps_256ms = [i * audio_duration_per_256ms_chunk for i in range(len(unified_256ms_rtf))]
-            plt.plot(timestamps_256ms, unified_256ms_rtf, color='green', linewidth=2, label='256ms', drawstyle='steps-post')
+            unified_256ms_label = results.get('unified_256ms_model_name', '256ms Model')
+            plt.plot(timestamps_256ms, unified_256ms_rtf, color='green', linewidth=2, label=unified_256ms_label, drawstyle='steps-post')
 
         plt.axhline(y=1.0, color='red', linestyle='--', alpha=0.7, label='Real-time (1.0x)')
         plt.ylabel('RTF (faster is better)')
@@ -1157,12 +1071,12 @@ def create_comparison_plots(results, stats_dict, output_dir="./plots", audio_fil
 
         # Performance summary
         plt.subplot(1, 2, 2)
-        models = ['PyTorch', 'Unified']
+        models = [pytorch_name, unified_name]
         mean_rtf = [np.mean(pytorch_rtf), np.mean(unified_rtf)]
         colors = ['blue', 'orange']
 
         if 'unified_256ms_times' in results:
-            models.append('256ms')
+            models.append(results.get('unified_256ms_model_name', '256ms Model'))
             mean_rtf.append(np.mean(unified_256ms_rtf))
             colors.append('green')
 
@@ -1384,7 +1298,7 @@ def test_synthetic_signals(coreml_models_dir="./coreml_models", debug_intermedia
 
     # Load models
     pytorch_model = load_silero_vad()
-    pytorch_ref = PyTorchVADReference(pytorch_model)
+    pytorch_ref = PyTorchJITWrapper(pytorch_model)
     unified_wrapper = UnifiedCoreMLWrapper(coreml_models_dir)
 
     # Also test with pipeline wrapper to see if context handling is the issue
@@ -1436,7 +1350,7 @@ def compare_models_on_audio(audio_path, coreml_models_dir="./coreml_models", chu
 
     # Load PyTorch model
     pytorch_model = load_silero_vad()
-    pytorch_ref = PyTorchVADReference(pytorch_model)
+    pytorch_ref = PyTorchJITWrapper(pytorch_model)
 
     # Load Unified CoreML model
     try:
@@ -1487,6 +1401,7 @@ def compare_models_on_audio(audio_path, coreml_models_dir="./coreml_models", chu
         results['unified_256ms_chunk_size'] = results_256ms['chunk_size']
         results['unified_256ms_processing_time'] = processing_256ms_time
         results['unified_256ms_times'] = results_256ms['times']  # Individual chunk processing times
+        results['unified_256ms_model_name'] = getattr(unified_256ms_wrapper, 'model_name', 'Unified 256ms CoreML')
 
     processing_time = time.time() - start_time
 
@@ -1596,7 +1511,7 @@ def compare_models(pytorch_model_path=None, coreml_models_dir="./coreml_models",
 
     # Load PyTorch model
     pytorch_model = load_silero_vad()
-    pytorch_ref = PyTorchVADReference(pytorch_model)
+    pytorch_ref = PyTorchJITWrapper(pytorch_model)
 
     # Load CoreML models
     if not os.path.exists(coreml_models_dir):
@@ -1667,23 +1582,41 @@ def compare_models(pytorch_model_path=None, coreml_models_dir="./coreml_models",
         # Compare each stage
         stage_results = {}
 
-        # STFT comparison
-        stft_metrics = calculate_metrics(
-            pytorch_results['stft_output'],
-            coreml_results['stft_output'],
-            "STFT"
-        )
-        stage_results['stft'] = stft_metrics
-        print(f"STFT - MSE: {stft_metrics['mse']:.2e}, Max Diff: {stft_metrics['max_diff']:.2e}, Corr: {stft_metrics['correlation']:.4f}")
+        # STFT comparison (only available with manual reference implementation)
+        if (
+            pytorch_results.get('stft_output') is not None
+            and coreml_results.get('stft_output') is not None
+        ):
+            stft_metrics = calculate_metrics(
+                pytorch_results['stft_output'],
+                coreml_results['stft_output'],
+                "STFT"
+            )
+            stage_results['stft'] = stft_metrics
+            print(
+                f"STFT - MSE: {stft_metrics['mse']:.2e}, Max Diff: {stft_metrics['max_diff']:.2e}, "
+                f"Corr: {stft_metrics['correlation']:.4f}"
+            )
+        else:
+            print("STFT - comparison unavailable when using the TorchScript reference model")
 
-        # Encoder comparison
-        encoder_metrics = calculate_metrics(
-            pytorch_results['encoder_output'],
-            coreml_results['encoder_output'],
-            "Encoder"
-        )
-        stage_results['encoder'] = encoder_metrics
-        print(f"Encoder - MSE: {encoder_metrics['mse']:.2e}, Max Diff: {encoder_metrics['max_diff']:.2e}, Corr: {encoder_metrics['correlation']:.4f}")
+        # Encoder comparison (only available with manual reference implementation)
+        if (
+            pytorch_results.get('encoder_output') is not None
+            and coreml_results.get('encoder_output') is not None
+        ):
+            encoder_metrics = calculate_metrics(
+                pytorch_results['encoder_output'],
+                coreml_results['encoder_output'],
+                "Encoder"
+            )
+            stage_results['encoder'] = encoder_metrics
+            print(
+                f"Encoder - MSE: {encoder_metrics['mse']:.2e}, Max Diff: {encoder_metrics['max_diff']:.2e}, "
+                f"Corr: {encoder_metrics['correlation']:.4f}"
+            )
+        else:
+            print("Encoder - comparison unavailable when using the TorchScript reference model")
 
         # Final output comparison
         final_metrics = calculate_metrics(
@@ -1743,14 +1676,37 @@ def compare_models(pytorch_model_path=None, coreml_models_dir="./coreml_models",
     print("=" * 80)
 
     # Aggregate metrics
-    all_stft_mse = [r['stage_results']['stft']['mse'] for r in results]
-    all_encoder_mse = [r['stage_results']['encoder']['mse'] for r in results]
-    all_final_mse = [r['stage_results']['final']['mse'] for r in results]
+    stft_mse_values = [
+        r['stage_results']['stft']['mse']
+        for r in results
+        if 'stft' in r['stage_results'] and r['stage_results']['stft'] and 'mse' in r['stage_results']['stft']
+    ]
+    encoder_mse_values = [
+        r['stage_results']['encoder']['mse']
+        for r in results
+        if 'encoder' in r['stage_results'] and r['stage_results']['encoder'] and 'mse' in r['stage_results']['encoder']
+    ]
+    final_mse_values = [
+        r['stage_results']['final']['mse']
+        for r in results
+        if 'final' in r['stage_results'] and r['stage_results']['final'] and 'mse' in r['stage_results']['final']
+    ]
 
     print(f"\nMean Squared Error (MSE) Summary (vs PyTorch):")
-    print(f"  Pipeline STFT:    {np.mean(all_stft_mse):.2e} ± {np.std(all_stft_mse):.2e}")
-    print(f"  Pipeline Encoder: {np.mean(all_encoder_mse):.2e} ± {np.std(all_encoder_mse):.2e}")
-    print(f"  Pipeline Final:   {np.mean(all_final_mse):.2e} ± {np.std(all_final_mse):.2e}")
+    if stft_mse_values:
+        print(f"  Pipeline STFT:    {np.mean(stft_mse_values):.2e} ± {np.std(stft_mse_values):.2e}")
+    else:
+        print("  Pipeline STFT:    comparison unavailable (TorchScript reference does not expose STFT output)")
+
+    if encoder_mse_values:
+        print(f"  Pipeline Encoder: {np.mean(encoder_mse_values):.2e} ± {np.std(encoder_mse_values):.2e}")
+    else:
+        print("  Pipeline Encoder: comparison unavailable (TorchScript reference does not expose encoder output)")
+
+    if final_mse_values:
+        print(f"  Pipeline Final:   {np.mean(final_mse_values):.2e} ± {np.std(final_mse_values):.2e}")
+    else:
+        print("  Pipeline Final:   comparison unavailable")
 
     # Add unified model metrics if available
     if has_unified and any(r.get('unified_metrics') for r in results):
@@ -1762,16 +1718,30 @@ def compare_models(pytorch_model_path=None, coreml_models_dir="./coreml_models",
 
     # Pass/fail criteria
     print(f"\n✅ Pass/Fail Analysis:")
-    # Realistic thresholds for converted models
-    stft_pass = np.mean(all_stft_mse) < 1.0  # Allow for different FFT implementations
-    encoder_pass = np.mean(all_encoder_mse) < 50000  # Account for value clipping at 10000
-    final_pass = np.mean(all_final_mse) < 0.1  # 10% difference acceptable for VAD probabilities
+    evaluation_results = []
 
-    print(f"  STFT:    {'✅ PASS' if stft_pass else '❌ FAIL'} (threshold: 1.0)")
-    print(f"  Encoder: {'✅ PASS' if encoder_pass else '❌ FAIL'} (threshold: 5.0e+4)")
-    print(f"  Final:   {'✅ PASS' if final_pass else '❌ FAIL'} (threshold: 1.0e-1)")
+    if stft_mse_values:
+        stft_pass = np.mean(stft_mse_values) < 1.0  # Allow for different FFT implementations
+        evaluation_results.append(stft_pass)
+        print(f"  STFT:    {'✅ PASS' if stft_pass else '❌ FAIL'} (threshold: 1.0)")
+    else:
+        print("  STFT:    not evaluated (TorchScript reference)")
 
-    overall_pass = stft_pass and encoder_pass and final_pass
+    if encoder_mse_values:
+        encoder_pass = np.mean(encoder_mse_values) < 50000  # Account for value clipping at 10000
+        evaluation_results.append(encoder_pass)
+        print(f"  Encoder: {'✅ PASS' if encoder_pass else '❌ FAIL'} (threshold: 5.0e+4)")
+    else:
+        print("  Encoder: not evaluated (TorchScript reference)")
+
+    if final_mse_values:
+        final_pass = np.mean(final_mse_values) < 0.1  # 10% difference acceptable for VAD probabilities
+        evaluation_results.append(final_pass)
+        print(f"  Final:   {'✅ PASS' if final_pass else '❌ FAIL'} (threshold: 1.0e-1)")
+    else:
+        print("  Final:   not evaluated")
+
+    overall_pass = all(evaluation_results) if evaluation_results else True
     print(f"\n🎯 Overall Result: {'✅ MODELS MATCH WELL' if overall_pass else '❌ SIGNIFICANT DIFFERENCES DETECTED'}")
 
     # Performance summary

@@ -37,8 +37,16 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--overwrite",
+        dest="overwrite",
         action="store_true",
-        help="Overwrite any existing compiled bundles instead of skipping them.",
+        default=True,
+        help="Overwrite any existing compiled bundles (default).",
+    )
+    parser.add_argument(
+        "--no-overwrite",
+        dest="overwrite",
+        action="store_false",
+        help="Skip recompilation when a compiled bundle already exists.",
     )
     parser.add_argument(
         "--xcrun-binary",

@@ -1,134 +1,134 @@
 {
   "standard": {
     "original": {
-      "size_kb": 884.1416015625,
-      "total_latency_ms": 2.2275805473327637,
-      "chunk_time_ms": 0.07174361136651809,
+      "size_kb": 883.8310546875,
+      "total_latency_ms": 2.1710753440856934,
+      "chunk_time_ms": 0.06990894194572203,
       "mse_error": 0.0,
       "compression_ratio": 1.0,
-      "rtf": 448.91754922055196
+      "rtf": 460.6012420177572
     },
     "int8": {
-      "size_kb": 336.419921875,
-      "total_latency_ms": 2.489805221557617,
-      "chunk_time_ms": 0.08019401181128717,
-      "mse_error": 0.00038568992749787867,
-      "compression_ratio": 2.6280893136019787,
-      "rtf": 401.6378435315522
+      "size_kb": 336.109375,
+      "total_latency_ms": 2.171158790588379,
+      "chunk_time_ms": 0.06991932469029581,
+      "mse_error": 2.0062108887941577e-05,
+      "compression_ratio": 2.6295935800288226,
+      "rtf": 460.5835392302202
     },
     "mixed": {
-      "size_kb": 335.669921875,
-      "total_latency_ms": 2.1506309509277344,
-      "chunk_time_ms": 0.06927828634938886,
-      "mse_error": 0.00022982899099588394,
-      "compression_ratio": 2.633961352938096,
-      "rtf": 464.9798235111525
+      "size_kb": 335.359375,
+      "total_latency_ms": 2.019357681274414,
+      "chunk_time_ms": 0.0650413574710969,
+      "mse_error": 3.940932856494328e-06,
+      "compression_ratio": 2.635474421096771,
+      "rtf": 495.2069706486576
     },
     "palette_2bit": {
-      "size_kb": 102.2939453125,
-      "total_latency_ms": 2.231156826019287,
-      "chunk_time_ms": 0.07187551067721458,
-      "mse_error": 0.14277242124080658,
-      "compression_ratio": 8.643146951283544,
-      "rtf": 448.1979878501627
+      "size_kb": 101.9833984375,
+      "total_latency_ms": 2.0408153533935547,
+      "chunk_time_ms": 0.06572123496763167,
+      "mse_error": 0.07421249896287918,
+      "compression_ratio": 8.666420890348652,
+      "rtf": 490.00023365031893
     },
     "palette_4bit": {
-      "size_kb": 178.4921875,
-      "total_latency_ms": 2.115309238433838,
-      "chunk_time_ms": 0.06813887626894059,
-      "mse_error": 0.0068008070811629295,
-      "compression_ratio": 4.953391036022235,
-      "rtf": 472.744117895686
+      "size_kb": 178.181640625,
+      "total_latency_ms": 2.0960211753845215,
+      "chunk_time_ms": 0.06750475975774951,
+      "mse_error": 0.008849564008414745,
+      "compression_ratio": 4.960281270210131,
+      "rtf": 477.0944166709322
     },
     "palette_6bit": {
-      "size_kb": 254.431640625,
-      "total_latency_ms": 2.0871400833129883,
-      "chunk_time_ms": 0.06722250292378086,
-      "mse_error": 0.0004432057903613895,
-      "compression_ratio": 3.4749671832899613,
-      "rtf": 479.124524508516
+      "size_kb": 254.12109375,
+      "total_latency_ms": 2.1602630615234375,
+      "chunk_time_ms": 0.06955246771535567,
+      "mse_error": 7.899252523202449e-05,
+      "compression_ratio": 3.477991699331335,
+      "rtf": 462.90658661486844
     },
     "palette_8bit": {
-      "size_kb": 333.0009765625,
-      "total_latency_ms": 2.147364616394043,
-      "chunk_time_ms": 0.06915138613793156,
-      "mse_error": 1.3337470591068268e-05,
-      "compression_ratio": 2.6550720982542164,
-      "rtf": 465.6870996036284
+      "size_kb": 332.6904296875,
+      "total_latency_ms": 2.0614981651306152,
+      "chunk_time_ms": 0.06639380608835528,
+      "mse_error": 8.033612175495364e-06,
+      "compression_ratio": 2.656617010347105,
+      "rtf": 485.0841086907495
     },
     "pruned_int8": {
-      "size_kb": 334.9833984375,
-      "total_latency_ms": 2.2041797637939453,
-      "chunk_time_ms": 0.07098528646653698,
-      "mse_error": 0.0013897495809942484,
-      "compression_ratio": 2.639359459861292,
-      "rtf": 453.6835045970795
+      "size_kb": 334.6728515625,
+      "total_latency_ms": 2.1642208099365234,
+      "chunk_time_ms": 0.0696755224658597,
+      "mse_error": 2.8712615858239587e-06,
+      "compression_ratio": 2.640880640784348,
+      "rtf": 462.060061251019
     }
   },
   "256ms": {
     "original": {
-      "size_kb": 1018.7470703125,
-      "total_latency_ms": 0.7701396942138672,
-      "chunk_time_ms": 0.19246935844421387,
+      "size_kb": 1016.451171875,
+      "total_latency_ms": 0.680994987487793,
+      "chunk_time_ms": 0.17004311084747314,
       "mse_error": 0.0,
       "compression_ratio": 1.0,
-      "rtf": 1298.4657296761811
+      "rtf": 1468.4395896789554
     },
     "int8": {
-      "size_kb": 471.494140625,
-      "total_latency_ms": 0.9233355522155762,
-      "chunk_time_ms": 0.2305150032043457,
-      "mse_error": 0.001488292240537703,
-      "compression_ratio": 2.16067811354363,
-      "rtf": 1083.0298883222517
+      "size_kb": 469.1982421875,
+      "total_latency_ms": 0.6932735443115234,
+      "chunk_time_ms": 0.1731574535369873,
+      "mse_error": 0.0018436431419104338,
+      "compression_ratio": 2.166357587223884,
+      "rtf": 1442.4320792351607
     },
     "mixed": {
-      "size_kb": 470.744140625,
-      "total_latency_ms": 0.7613062858581543,
-      "chunk_time_ms": 0.19019842147827148,
-      "mse_error": 0.0004615187644958496,
-      "compression_ratio": 2.1641205538106636,
-      "rtf": 1313.5317789643454
+      "size_kb": 468.4482421875,
+      "total_latency_ms": 0.6878376007080078,
+      "chunk_time_ms": 0.1717209815979004,
+      "mse_error": 0.002448737621307373,
+      "compression_ratio": 2.1698259921491125,
+      "rtf": 1453.8315424610053
     },
     "palette_2bit": {
-      "size_kb": 237.416015625,
-      "total_latency_ms": 0.7697105407714844,
-      "chunk_time_ms": 0.19228458404541016,
-      "mse_error": 0.7780360579490662,
-      "compression_ratio": 4.290978717803171,
-      "rtf": 1299.1896914880435
+      "size_kb": 235.1201171875,
+      "total_latency_ms": 0.661313533782959,
+      "chunk_time_ms": 0.1651376485824585,
+      "mse_error": 0.19179709255695343,
+      "compression_ratio": 4.3231144320348225,
+      "rtf": 1512.1420459666517
     },
     "palette_4bit": {
-      "size_kb": 313.6142578125,
-      "total_latency_ms": 0.7533431053161621,
-      "chunk_time_ms": 0.18822252750396729,
-      "mse_error": 0.0042989375069737434,
-      "compression_ratio": 3.2484080201531413,
-      "rtf": 1327.41640952607
+      "size_kb": 311.318359375,
+      "total_latency_ms": 0.6845474243164062,
+      "chunk_time_ms": 0.17095506191253662,
+      "mse_error": 0.03612018749117851,
+      "compression_ratio": 3.26498949151479,
+      "rtf": 1460.819169685149
     },
     "palette_6bit": {
-      "size_kb": 389.5537109375,
-      "total_latency_ms": 0.7591128349304199,
-      "chunk_time_ms": 0.18962323665618896,
-      "mse_error": 0.0007217526435852051,
-      "compression_ratio": 2.6151645888850172,
-      "rtf": 1317.3272193344744
+      "size_kb": 387.2578125,
+      "total_latency_ms": 0.6666660308837891,
+      "chunk_time_ms": 0.1665562391281128,
+      "mse_error": 0.005844163708388805,
+      "compression_ratio": 2.624740261050253,
+      "rtf": 1500.0014305128389
     },
     "palette_8bit": {
-      "size_kb": 468.123046875,
-      "total_latency_ms": 0.7515192031860352,
-      "chunk_time_ms": 0.18774569034576416,
-      "mse_error": 3.527402805048041e-05,
-      "compression_ratio": 2.176237801392696,
-      "rtf": 1330.637987373497
+      "size_kb": 465.8271484375,
+      "total_latency_ms": 0.6717681884765625,
+      "chunk_time_ms": 0.1677870750427246,
+      "mse_error": 0.0003941178438253701,
+      "compression_ratio": 2.182035064474945,
+      "rtf": 1488.6087450312323
     },
     "pruned_int8": {
-      "size_kb": 470.064453125,
-      "total_latency_ms": 0.7511496543884277,
-      "chunk_time_ms": 0.18762946128845215,
-      "mse_error": 0.0019415735732764006,
-      "compression_ratio": 2.167249753815343,
-      "rtf": 1331.2926314453032
+      "size_kb": 467.7685546875,
+      "total_latency_ms": 0.6653666496276855,
+      "chunk_time_ms": 0.16614198684692383,
+      "mse_error": 0.009167289361357689,
+      "compression_ratio": 2.1729788411152517,
+      "rtf": 1502.9307533817075
     }
   }
 }

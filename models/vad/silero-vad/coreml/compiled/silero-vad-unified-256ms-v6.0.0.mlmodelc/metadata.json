@@ -42,7 +42,6 @@
     "specificationVersion" : 6,
     "storagePrecision" : "Mixed (Float16, Float32)",
     "mlProgramOperationTypeHistogram" : {
-      "Log" : 8,
       "Concat" : 9,
       "Lstm" : 8,
       "SliceByIndex" : 41,
@@ -50,16 +49,16 @@
       "Pow" : 16,
       "Transpose" : 16,
       "Sub" : 2,
-      "Relu" : 32,
+      "Relu" : 40,
       "Squeeze" : 18,
       "Cast" : 54,
       "Sigmoid" : 8,
-      "Add" : 24,
-      "Sqrt" : 8,
+      "Add" : 16,
       "ExpandDims" : 26,
-      "ReduceMean" : 8,
+      "Sqrt" : 8,
+      "Mul" : 7,
       "Conv" : 48,
-      "Mul" : 7
+      "Pad" : 8
     },
     "computePrecision" : "Mixed (Float16, Float32, Int32)",
     "stateSchema" : [

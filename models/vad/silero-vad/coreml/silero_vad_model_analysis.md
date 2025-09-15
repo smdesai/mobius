@@ -293,3 +293,19 @@ model = load_silero_vad(
 - **Memory**: Minimal RAM usage, cache-friendly
 
 This analysis confirms that the Silero VAD model is expertly optimized for its intended use case: real-time voice activity detection with minimal computational overhead.
+
+## Recent Debugging Summary (2025-09-15)
+
+- **Problem**: After switching comparisons to the TorchScript (JIT) reference, unified CoreML exports drifted badly (correlation ≈0.02). Root cause was that our hand-built PyTorch modules diverged from the TorchScript implementation—STFT used symmetric padding and a log stage, encoder strides defaulted to 1, and the decoder averaged its temporal axis.
+- **Fixes**: Tweaked `coreml/convert_model_components.py` so STFT uses right-side `ReflectionPad1d` with hop 128 and returns raw magnitudes, encoder layers read stride/padding metadata, and decoder mirrors the dropout→ReLU→1×1 Conv→Sigmoid sequence. Propagated these parameters through `coreml/convert-coreml.py` when building unified exports. Regenerated the CoreML packages and reran `compare-models.py`, restoring parity with correlation ≈0.99998 on `yc_first_minute.wav`.
+
+### 256 ms Unified Variant Update (2025-09-15)
+
+- **Problem**: The 256 ms CoreML package was still built from the older hand-written PyTorch modules, so its STFT windowing and encoder strides disagreed with the JIT baseline, leading to the large probability drift we observed when switching comparisons.
+- **Change**: Re-exported the CoreML bundle with `uv run python convert-coreml.py --output-dir ./silero-vad-coreml --include-256ms`, letting the refreshed conversion pipeline (right-pad STFT, hop=128, decoder layout) drive the 8×512 noisy-OR aggregator used for long chunks.
+- **Validation**: `uv run python compare-models.py --audio-file ../../../../../FluidAudio/yc_first_minute.wav --output-dir ./plots --coreml-dir ./silero-vad-coreml --include-256ms` now reports PyTorch ↔ CoreML agreement for the 256 ms variant (MAE ≈ 2.1×10⁻⁴, MSE ≈ 2.0×10⁻⁶, r ≈ 0.999988, max |Δ| ≈ 0.018). The 256 ms CoreML model also processes chunks ≈3.6× faster than the TorchScript reference (mean RTF ≈ 1485).
+
+### Plot Label Clarification (2025-09-15)
+
+- **Problem**: `coreml/compare-models.py` plotted "PyTorch" and "Unified" as generic labels, which made it hard to confirm which exported package a chart referenced once multiple CoreML bundles existed side by side.
+- **Change**: Threaded explicit `model_name` metadata through the TorchScript and CoreML wrappers and taught the plotting helpers to reuse those identifiers (e.g., `silero-vad-jit`, `silero-vad-unified-v6.0.0`, `silero-vad-unified-256ms-v6.0.0`) in legends, axis labels, and performance summaries for both the base and 256 ms variants.

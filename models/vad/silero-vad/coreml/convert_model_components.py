@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import coremltools as ct
 from silero_vad import __version__ as silero_version
 
@@ -8,38 +9,51 @@ COREML_AUTHOR = "Fluid Infernece + Silero Team"
 
 class STFTModel(nn.Module):
     """STFT preprocessing model for CoreML"""
-    def __init__(self, stft_weights):
+
+    def __init__(self, stft_weights, hop_length=128, pad=64):
         super().__init__()
         # Register the STFT basis as a parameter
         self.register_buffer('forward_basis', stft_weights)
+        self.hop_length = hop_length
+        self.pad = pad
 
     def forward(self, x):
         # x shape: (batch_size, samples)
-        # Apply STFT convolution
+        # Mirror the TorchScript STFT: reflection pad then conv with provided basis
+        # TorchScript applies reflection padding only on the right side (0, pad)
+        x = F.pad(x, (0, self.pad), mode="reflect")
         x = x.unsqueeze(1)  # Add channel dimension: [batch, 1, samples]
 
-        # Apply STFT convolution with stride=256 (hop length) and padding
-        stft_out = torch.conv1d(x, self.forward_basis, stride=256, padding=128)
+        stft_out = torch.conv1d(x, self.forward_basis, stride=self.hop_length, padding=0)
 
         # stft_out shape: [batch, 258, time_steps]
         # 258 = 129 real + 129 imaginary components
         real_part = stft_out[:, :129, :]
         imag_part = stft_out[:, 129:, :]
 
-        # Compute magnitude
-        magnitude = torch.sqrt(real_part**2 + imag_part**2 + 1e-8)
+        # Compute magnitude (match TorchScript pipeline)
+        magnitude = torch.sqrt(real_part**2 + imag_part**2 + 1e-12)
 
-        # Apply log
-        stft_out = torch.log(magnitude + 1e-8)
-
-        return stft_out
+        return magnitude
 
 
 class EncoderModel(nn.Module):
     """Encoder model with 4 convolutional layers"""
-    def __init__(self, state_dict):
+
+    def __init__(self, state_dict, layer_configs=None):
         super().__init__()
         self.layers = nn.ModuleList()
+
+        # TorchScript encoder uses strides [1, 2, 2, 1] with padding 1
+        default_configs = [
+            {"stride": 1, "padding": 1},
+            {"stride": 2, "padding": 1},
+            {"stride": 2, "padding": 1},
+            {"stride": 1, "padding": 1},
+        ]
+
+        if layer_configs is None:
+            layer_configs = default_configs
 
         # Build 4 encoder layers
         for i in range(4):
@@ -50,9 +64,18 @@ class EncoderModel(nn.Module):
                 weight = state_dict[weight_key]
                 bias = state_dict[bias_key]
 
+                stride = layer_configs[i]["stride"]
+                padding = layer_configs[i]["padding"]
+
                 # Create Conv1d layer
                 out_channels, in_channels, kernel_size = weight.shape
-                conv = nn.Conv1d(in_channels, out_channels, kernel_size, padding=kernel_size//2)
+                conv = nn.Conv1d(
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    stride=stride,
+                    padding=padding,
+                )
                 conv.weight.data = weight
                 conv.bias.data = bias
 
@@ -71,6 +94,7 @@ class EncoderModel(nn.Module):
 
 class DecoderModel(nn.Module):
     """Decoder model with LSTM and final conv"""
+
     def __init__(self, state_dict):
         super().__init__()
 
@@ -92,6 +116,9 @@ class DecoderModel(nn.Module):
         final_weight = state_dict["_model.decoder.decoder.2.weight"]
         final_bias = state_dict["_model.decoder.decoder.2.bias"]
 
+        # Dropout is disabled in eval mode, but keep the op for structural parity
+        self.dropout = nn.Dropout(p=0.0)
+        self.activation = nn.ReLU()
         self.final_conv = nn.Conv1d(128, 1, 1)
         self.final_conv.weight.data = final_weight
         self.final_conv.bias.data = final_bias
@@ -113,12 +140,11 @@ class DecoderModel(nn.Module):
         # Convert back to (batch, channels, sequence)
         lstm_out = lstm_out.transpose(1, 2)
 
-        # Apply final conv
-        out = self.final_conv(lstm_out)
+        # Match TorchScript decoder: dropout -> ReLU -> conv -> sigmoid
+        out = self.dropout(lstm_out)
+        out = self.activation(out)
+        out = self.final_conv(out)
         out = self.sigmoid(out)
-
-        # Global average pooling to get single value per batch
-        out = out.mean(dim=2, keepdim=True)
 
         # Return output and new states (remove num_layers dimension)
         return out, hn.squeeze(0), cn.squeeze(0)
