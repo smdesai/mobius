@@ -20,7 +20,7 @@ Models are deployed on [Huggingface](https://huggingface.co/FluidInference/siler
 - **LSTM State**: Persistent hidden/cell states for streaming inference
 
 ### 3. Unified 256ms Model
-- **Input**: 4096 samples (16kHz, 256ms)
+- **Input**: 4,160 samples (16kHz, 256ms) (64 context + 4096 current)
 - **Output**: Single aggregated VAD probability [0.0-1.0]
 - **Internal Processing**: Splits input into 8 chunks of 512 samples each, processes sequentially, returns maximum probability
 - **Use Case**: Optimized for file processing and batch inference where speed matters more than real-time constraints

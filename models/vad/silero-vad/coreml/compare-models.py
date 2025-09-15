@@ -88,8 +88,7 @@ class PyTorchVADReference:
         bias_hh = self.state_dict["_model.decoder.rnn.bias_hh"]
 
         # Standard LSTM implementation (fixed from incorrect GRU-like formulation)
-        batch_size, seq_len, input_size = x.shape
-        hidden_size = 128
+        batch_size, seq_len, _ = x.shape
 
         if self.hidden_state is None or self.hidden_state.shape[0] != batch_size:
             self.reset_states(batch_size)
