@@ -1,3 +1,5 @@
+# https://github.com/ggml-org/whisper.cpp/blob/master/models/convert-silero-vad-to-ggml.py
+
 import os
 import struct
 import argparse
