@@ -38,11 +38,13 @@ uv run python compare-components.py compare \
 ```
 
 Output comparison:
+
 ![./plots/compare-components/mel_encoder_time_l2.png](./plots/compare-components/mel_encoder_time_l2.png)
 ![./plots/compare-components/joint_decision_prob_u0.png](./plots/compare-components/joint_decision_prob_u0.png)
 ![./plots/compare-components/decoder_steps_l2.png](./plots/compare-components/decoder_steps_l2.png)
 
 Latency:
+
 ![./plots/quantize/all/all_components_compile.png](./plots/quantize/all/all_components_compile.png)
 ![./plots/quantize/all/all_components_compression.png](./plots/quantize/all/all_components_compression.png)
 ![./plots/quantize/all/all_components_quality.png](./plots/quantize/all/all_components_quality.png)
