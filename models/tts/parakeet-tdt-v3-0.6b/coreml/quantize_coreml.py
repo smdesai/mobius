@@ -547,7 +547,9 @@ def _quantize_dir(
         if not src_path.exists():
             continue
         dst_path = output_dir / src_name
-        base_model = ct.models.MLModel(str(src_path), compute_units=ct.ComputeUnit.CPU_AND_NE)
+    # Use CPU+GPU for preprocessor to avoid NE preprocessor input size issues; others use CPU+NE
+    cu = ct.ComputeUnit.CPU_AND_GPU if name == "preprocessor" else ct.ComputeUnit.CPU_AND_NE
+    base_model = ct.models.MLModel(str(src_path), compute_units=cu)
         # Target iOS17 when running optimizations so the right ops are chosen
         try:
             base_model.minimum_deployment_target = ct.target.iOS17
@@ -608,7 +610,7 @@ def quantize(
     input_dir: Path = typer.Option(Path("parakeet_coreml"), help="Directory containing baseline mlpackages + metadata.json"),
     output_root: Path = typer.Option(Path("parakeet_coreml_quantized"), help="Root output dir for quantized variants"),
     validation_audio: Optional[Path] = typer.Option(None, exists=True, resolve_path=True, help="Optional 15s, 16kHz wav for evaluation (defaults to bundled audio if present)"),
-    compute_units: str = typer.Option("ALL", help="Compute units for evaluation: CPU_ONLY, CPU_AND_NE, ALL (use ALL for ANE)"),
+    compute_units: str = typer.Option("CPU_AND_NE", help="Compute units for evaluation of non-preprocessor models. Preprocessor is forced to CPU_AND_GPU."),
     runs: int = typer.Option(10, help="Timed runs per model for latency measurement"),
     categories: Optional[List[str]] = typer.Option(
         None,
@@ -679,12 +681,13 @@ def quantize(
 
     # Load baseline models and helpers for inputs
     # Baseline models for input preparation
-    pre_base = ct.models.MLModel(str(input_dir / "parakeet_preprocessor.mlpackage"), compute_units=ct.ComputeUnit[compute_units])
-    enc_base = ct.models.MLModel(str(input_dir / "parakeet_encoder.mlpackage"), compute_units=ct.ComputeUnit[compute_units])
-    mel_encoder_base = ct.models.MLModel(str(input_dir / "parakeet_mel_encoder.mlpackage"), compute_units=ct.ComputeUnit[compute_units])
-    decoder_base = ct.models.MLModel(str(input_dir / "parakeet_decoder.mlpackage"), compute_units=ct.ComputeUnit[compute_units])
-    joint_decision_base = ct.models.MLModel(str(input_dir / "parakeet_joint_decision.mlpackage"), compute_units=ct.ComputeUnit[compute_units])
-    joint_base = ct.models.MLModel(str(input_dir / "parakeet_joint.mlpackage"), compute_units=ct.ComputeUnit[compute_units])
+    # Force preprocessor to CPU+GPU and all other components to CPU+NE for evaluation
+    pre_base = ct.models.MLModel(str(input_dir / "parakeet_preprocessor.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_GPU)
+    enc_base = ct.models.MLModel(str(input_dir / "parakeet_encoder.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
+    mel_encoder_base = ct.models.MLModel(str(input_dir / "parakeet_mel_encoder.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
+    decoder_base = ct.models.MLModel(str(input_dir / "parakeet_decoder.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
+    joint_decision_base = ct.models.MLModel(str(input_dir / "parakeet_joint_decision.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
+    joint_base = ct.models.MLModel(str(input_dir / "parakeet_joint.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
 
     # Prepare typical inputs once using baseline models
     pre_out = pre_base.predict({"audio_signal": audio, "audio_length": audio_len})
@@ -982,12 +985,13 @@ def quantize(
         joint_compile_ms = _offline_compile_time_ms(joint_q_path)
         jd_compile_q_ms = _offline_compile_time_ms(jd_q_path)
 
-        pre_q = ct.models.MLModel(str(pre_q_path), compute_units=ct.ComputeUnit[compute_units])
-        enc_q = ct.models.MLModel(str(enc_q_path), compute_units=ct.ComputeUnit[compute_units])
-        mel_q = ct.models.MLModel(str(mel_q_path), compute_units=ct.ComputeUnit[compute_units])
-        dec_q = ct.models.MLModel(str(dec_q_path), compute_units=ct.ComputeUnit[compute_units])
-        joint_q = ct.models.MLModel(str(joint_q_path), compute_units=ct.ComputeUnit[compute_units])
-        jd_q = ct.models.MLModel(str(jd_q_path), compute_units=ct.ComputeUnit[compute_units])
+        # Match compute units for quantized artifacts: preprocessor on CPU+GPU; others on CPU+NE
+        pre_q = ct.models.MLModel(str(pre_q_path), compute_units=ct.ComputeUnit.CPU_AND_GPU)
+        enc_q = ct.models.MLModel(str(enc_q_path), compute_units=ct.ComputeUnit.CPU_AND_NE)
+        mel_q = ct.models.MLModel(str(mel_q_path), compute_units=ct.ComputeUnit.CPU_AND_NE)
+        dec_q = ct.models.MLModel(str(dec_q_path), compute_units=ct.ComputeUnit.CPU_AND_NE)
+        joint_q = ct.models.MLModel(str(joint_q_path), compute_units=ct.ComputeUnit.CPU_AND_NE)
+        jd_q = ct.models.MLModel(str(jd_q_path), compute_units=ct.ComputeUnit.CPU_AND_NE)
 
         # Preprocessor quality vs baseline
         pre_q_out = pre_q.predict(pre_base_inputs)

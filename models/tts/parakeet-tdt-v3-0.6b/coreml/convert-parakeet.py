@@ -114,7 +114,7 @@ def convert(
     # Runtime CoreML contract keeps U=1 so the prediction net matches the streaming decoder.
     export_settings = ExportSettings(
         output_dir=output_dir,
-        compute_units=ct.ComputeUnit.ALL,  # prefer ANE when available
+        compute_units=ct.ComputeUnit.CPU_AND_NE,  # Default: ANE for all except preprocessor
         deployment_target=ct.target.iOS17,  # iOS 17+ features and kernels
         compute_precision=None,  # keep FP32 for parity; quantization handled separately
         max_audio_seconds=15.0,
@@ -219,11 +219,13 @@ def convert(
             ct.TensorType(name="mel", dtype=np.float32),
             ct.TensorType(name="mel_length", dtype=np.int32),
         ]
+        # Preprocessor must target CPU+GPU to avoid oversized NE input tensors
         preprocessor_model = _coreml_convert(
             traced_preprocessor,
             preprocessor_inputs,
             preprocessor_outputs,
             export_settings,
+            compute_units_override=ct.ComputeUnit.CPU_AND_GPU,
         )
         preprocessor_path = output_dir / "parakeet_preprocessor.mlpackage"
         _save_mlpackage(
@@ -245,11 +247,13 @@ def convert(
             ct.TensorType(name="encoder", dtype=np.float32),
             ct.TensorType(name="encoder_length", dtype=np.int32),
         ]
+        # Encoder targets ANE
         encoder_model = _coreml_convert(
             traced_encoder,
             encoder_inputs,
             encoder_outputs,
             export_settings,
+            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
         )
         encoder_path = output_dir / "parakeet_encoder.mlpackage"
         _save_mlpackage(
@@ -273,11 +277,13 @@ def convert(
             ct.TensorType(name="encoder", dtype=np.float32),
             ct.TensorType(name="encoder_length", dtype=np.int32),
         ]
+        # Fused mel+encoder targets ANE for completeness
         mel_encoder_model = _coreml_convert(
             traced_mel_encoder,
             mel_encoder_inputs,
             mel_encoder_outputs,
             export_settings,
+            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
         )
         mel_encoder_path = output_dir / "parakeet_mel_encoder.mlpackage"
         _save_mlpackage(
@@ -304,11 +310,13 @@ def convert(
             ct.TensorType(name="h_out", dtype=np.float32),
             ct.TensorType(name="c_out", dtype=np.float32),
         ]
+        # Decoder targets ANE
         decoder_model = _coreml_convert(
             traced_decoder,
             decoder_inputs,
             decoder_outputs,
             export_settings,
+            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
         )
         decoder_path = output_dir / "parakeet_decoder.mlpackage"
         _save_mlpackage(
@@ -331,11 +339,13 @@ def convert(
         joint_outputs = [
             ct.TensorType(name="logits", dtype=np.float32),
         ]
+        # Joint targets ANE
         joint_model = _coreml_convert(
             traced_joint,
             joint_inputs,
             joint_outputs,
             export_settings,
+            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
         )
         joint_path = output_dir / "parakeet_joint.mlpackage"
         _save_mlpackage(
@@ -364,11 +374,13 @@ def convert(
             ct.TensorType(name="token_prob", dtype=np.float32),
             ct.TensorType(name="duration", dtype=np.int32),
         ]
+        # JointDecision targets ANE
         joint_decision_model = _coreml_convert(
             traced_joint_decision,
             joint_decision_inputs,
             joint_decision_outputs,
             export_settings,
+            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
         )
         joint_decision_path = output_dir / "parakeet_joint_decision.mlpackage"
         _save_mlpackage(
@@ -398,11 +410,13 @@ def convert(
             ct.TensorType(name="token_prob", dtype=np.float32),
             ct.TensorType(name="duration", dtype=np.int32),
         ]
+        # Single-step JointDecision targets ANE
         jd_single_model = _coreml_convert(
             traced_jd_single,
             jd_single_inputs,
             jd_single_outputs,
             export_settings,
+            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
         )
         jd_single_path = output_dir / "parakeet_joint_decision_single_step.mlpackage"
         _save_mlpackage(

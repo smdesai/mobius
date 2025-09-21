@@ -206,12 +206,19 @@ class JointDecisionSingleStep(torch.nn.Module):
         return token_ids, token_prob, duration
 
 
-def _coreml_convert(traced: torch.jit.ScriptModule, inputs, outputs, settings: ExportSettings) -> ct.models.MLModel:
+def _coreml_convert(
+    traced: torch.jit.ScriptModule,
+    inputs,
+    outputs,
+    settings: ExportSettings,
+    compute_units_override: Optional[ct.ComputeUnit] = None,
+) -> ct.models.MLModel:
+    cu = compute_units_override if compute_units_override is not None else settings.compute_units
     kwargs = {
         "convert_to": "mlprogram",
         "inputs": inputs,
         "outputs": outputs,
-        "compute_units": settings.compute_units,
+        "compute_units": cu,
     }
     print("Converting:", traced.__class__.__name__)
     print("Conversion kwargs:", kwargs)
