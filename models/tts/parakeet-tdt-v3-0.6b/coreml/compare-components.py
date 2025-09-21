@@ -408,7 +408,10 @@ def compare(
 
     # Preprocessor
     pre = ct.models.MLModel(str(output_dir / "parakeet_preprocessor.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
+    t0 = time.perf_counter()
     pre_out = pre.predict({"audio_signal": _np32(audio_tensor), "audio_length": _np32(audio_length).astype(np.int32)})
+    t1 = time.perf_counter()
+    pre_first_ms = (t1 - t0) * 1000.0
     mel_ml = np.array(pre_out["mel"], dtype=np.float32, copy=True)
     mel_len_ml = np.array(pre_out["mel_length"], dtype=np.int32, copy=True)
     pre_atol, pre_rtol = max(atol, 1.0), max(rtol, 1e-2)
@@ -465,6 +468,7 @@ def compare(
         "latency": {
             "runs": int(runs),
             "warmup": int(warmup),
+            "coreml_first_ms": pre_first_ms,
             "torch_ms": {"mean": pre_torch_ms_mean, "std": pre_torch_ms_std},
             "coreml_ms": {"mean": pre_coreml_ms_mean, "std": pre_coreml_ms_std},
             "rtf": {"torch": pre_torch_rtf, "coreml": pre_coreml_rtf},
@@ -474,7 +478,10 @@ def compare(
 
     # Encoder
     enc = ct.models.MLModel(str(output_dir / "parakeet_encoder.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
+    t0 = time.perf_counter()
     enc_out = enc.predict({"mel": _np32(mel_ref), "mel_length": _np32(mel_length_ref).astype(np.int32)})
+    t1 = time.perf_counter()
+    enc_first_ms = (t1 - t0) * 1000.0
     enc_ml = np.array(enc_out["encoder"], dtype=np.float32, copy=True)
     enc_len_ml = np.array(enc_out["encoder_length"], dtype=np.int32, copy=True)
     a_enc, r_enc, ok_enc = _max_diffs(_np32(encoder_ref), enc_ml, max(rtol, 5e-3), max(atol, 5e-2))
@@ -505,6 +512,7 @@ def compare(
         "latency": {
             "runs": int(runs),
             "warmup": int(warmup),
+            "coreml_first_ms": enc_first_ms,
             "torch_ms": {"mean": enc_torch_ms_mean, "std": enc_torch_ms_std},
             "coreml_ms": {"mean": enc_coreml_ms_mean, "std": enc_coreml_ms_std},
             "rtf": {"torch": enc_torch_rtf, "coreml": enc_coreml_rtf},
@@ -519,11 +527,13 @@ def compare(
     blank_targets_np = np.array(blank_targets.detach().cpu().numpy(), dtype=np.int32, copy=True)
     blank_target_lengths_np = np.array(blank_target_lengths.detach().cpu().numpy(), dtype=np.int32, copy=True)
 
-    def _decoder_rollout_coreml(num_steps: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def _decoder_rollout_coreml(num_steps: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         outputs = []
         h_np = zero_state_np.copy()
         c_np = zero_state_np.copy()
-        for _ in range(num_steps):
+        first_ms: Optional[float] = None
+        for i in range(num_steps):
+            t0_i = time.perf_counter() if i == 0 else None
             res = dec.predict(
                 {
                     "targets": blank_targets_np,
@@ -532,6 +542,9 @@ def compare(
                     "c_in": c_np,
                 }
             )
+            if t0_i is not None:
+                t1_i = time.perf_counter()
+                first_ms = (t1_i - t0_i) * 1000.0
             outputs.append(np.array(res["decoder"], dtype=np.float32, copy=True))
             h_np = np.array(res["h_out"], dtype=np.float32, copy=True)
             c_np = np.array(res["c_out"], dtype=np.float32, copy=True)
@@ -539,9 +552,9 @@ def compare(
             decoder_seq = np.concatenate(outputs, axis=-1)
         else:
             decoder_seq = np.zeros((1, decoder_hidden, 0), dtype=np.float32)
-        return decoder_seq, h_np, c_np
+        return decoder_seq, h_np, c_np, (0.0 if first_ms is None else float(first_ms))
 
-    dec_ml, h_ml, c_ml = _decoder_rollout_coreml(symbol_steps)
+    dec_ml, h_ml, c_ml, dec_first_ms = _decoder_rollout_coreml(symbol_steps)
     h_ref_np = _np32(h_ref)
     c_ref_np = _np32(c_ref)
 
@@ -585,6 +598,7 @@ def compare(
         "latency": {
             "runs": int(runs),
             "warmup": int(warmup),
+            "coreml_first_ms": dec_first_ms,
             "torch_ms": {"mean": dec_torch_ms_mean, "std": dec_torch_ms_std},
             "coreml_ms": {"mean": dec_coreml_ms_mean, "std": dec_coreml_ms_std},
             "rtf": {"torch": dec_torch_rtf, "coreml": dec_coreml_rtf},
@@ -595,17 +609,22 @@ def compare(
     # Joint (sequential U=1 rollouts)
     j = ct.models.MLModel(str(output_dir / "parakeet_joint.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
 
-    def _joint_rollout_coreml(decoder_seq_np: np.ndarray) -> np.ndarray:
+    def _joint_rollout_coreml(decoder_seq_np: np.ndarray) -> Tuple[np.ndarray, float]:
         logits_steps = []
+        first_ms: Optional[float] = None
         for u in range(decoder_seq_np.shape[2]):
             dec_slice = decoder_seq_np[:, :, u : u + 1]
+            t0_u = time.perf_counter() if u == 0 else None
             res = j.predict({"encoder": encoder_np, "decoder": dec_slice})
+            if t0_u is not None:
+                t1_u = time.perf_counter()
+                first_ms = (t1_u - t0_u) * 1000.0
             logits_steps.append(np.array(res["logits"], dtype=np.float32, copy=True))
         if not logits_steps:
             raise RuntimeError("No decoder steps provided for joint rollout")
-        return np.concatenate(logits_steps, axis=2)
+        return np.concatenate(logits_steps, axis=2), (0.0 if first_ms is None else float(first_ms))
 
-    logits_ml = _joint_rollout_coreml(decoder_ref_np)
+    logits_ml, joint_first_ms = _joint_rollout_coreml(decoder_ref_np)
     logits_ref_np = _np32(logits_ref)
     a_j, r_j, ok_j = _max_diffs(logits_ref_np, logits_ml, max(rtol, 1e-2), max(atol, 1e-1))
     joint_plots = {}
@@ -654,6 +673,7 @@ def compare(
         "latency": {
             "runs": int(runs),
             "warmup": int(warmup),
+            "coreml_first_ms": joint_first_ms,
             "torch_ms": {"mean": joint_torch_ms_mean, "std": joint_torch_ms_std},
             "coreml_ms": {"mean": joint_coreml_ms_mean, "std": joint_coreml_ms_std},
             "rtf": {"torch": joint_torch_rtf, "coreml": joint_coreml_rtf},
@@ -666,10 +686,13 @@ def compare(
     mel_enc_plots = {}
     try:
         mel_enc = ct.models.MLModel(str(output_dir / "parakeet_mel_encoder.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
+        t0 = time.perf_counter()
         mel_enc_out = mel_enc.predict({
             "audio_signal": _np32(audio_tensor),
             "audio_length": _np32(audio_length).astype(np.int32),
         })
+        t1 = time.perf_counter()
+        mel_enc_first_ms = (t1 - t0) * 1000.0
         mel_enc_ml = np.array(mel_enc_out["encoder"], dtype=np.float32, copy=True)
         mel_enc_len_ml = np.array(mel_enc_out["encoder_length"], dtype=np.int32, copy=True)
         # Compare fused output vs Torch reference encoder
@@ -711,6 +734,7 @@ def compare(
             "latency": {
                 "runs": int(runs),
                 "warmup": int(warmup),
+                "fused_coreml_first_ms": mel_enc_first_ms,
                 "fused_coreml_ms": {"mean": mel_enc_coreml_ms_mean, "std": mel_enc_coreml_ms_std},
                 "separate_coreml_ms": {"mean": sep_coreml_ms_mean, "std": sep_coreml_ms_std},
                 "separate_torch_ms": {"mean": sep_torch_ms_mean, "std": sep_torch_ms_std},
@@ -726,13 +750,18 @@ def compare(
     try:
         # Fused CoreML joint decision
         jd = ct.models.MLModel(str(output_dir / "parakeet_joint_decision.mlpackage"), compute_units=ct.ComputeUnit.CPU_AND_NE)
-        def _joint_decision_rollout_coreml(decoder_seq_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        def _joint_decision_rollout_coreml(decoder_seq_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
             token_ids = []
             token_probs = []
             durations = []
+            first_ms: Optional[float] = None
             for u in range(decoder_seq_np.shape[2]):
                 dec_slice = decoder_seq_np[:, :, u : u + 1]
+                t0_u = time.perf_counter() if u == 0 else None
                 res = jd.predict({"encoder": encoder_np, "decoder": dec_slice})
+                if t0_u is not None:
+                    t1_u = time.perf_counter()
+                    first_ms = (t1_u - t0_u) * 1000.0
                 token_ids.append(np.array(res["token_id"], dtype=np.int32, copy=True))
                 token_probs.append(np.array(res["token_prob"], dtype=np.float32, copy=True))
                 durations.append(np.array(res["duration"], dtype=np.int32, copy=True))
@@ -742,9 +771,10 @@ def compare(
                 np.concatenate(token_ids, axis=2),
                 np.concatenate(token_probs, axis=2),
                 np.concatenate(durations, axis=2),
+                (0.0 if first_ms is None else float(first_ms)),
             )
 
-        token_id_ml, token_prob_ml, duration_ml = _joint_decision_rollout_coreml(decoder_ref_np)
+        token_id_ml, token_prob_ml, duration_ml, jd_first_ms = _joint_decision_rollout_coreml(decoder_ref_np)
 
         # CPU PyTorch decision using Torch logits
         vocab_with_blank = int(vocab_size) + 1
@@ -853,6 +883,7 @@ def compare(
             "latency": {
                 "runs": int(runs),
                 "warmup": int(warmup),
+                "fused_coreml_first_ms": jd_first_ms,
                 "fused_coreml_ms": {"mean": jd_coreml_ms_mean, "std": jd_coreml_ms_std},
                 "separate_joint_coreml_plus_cpu_ms": {"mean": sep_joint_plus_cpu_ms_mean, "std": sep_joint_plus_cpu_ms_std},
                 "rtf": {"fused_coreml": jd_coreml_rtf, "separate_joint_coreml_plus_cpu": sep_joint_cpu_rtf},
