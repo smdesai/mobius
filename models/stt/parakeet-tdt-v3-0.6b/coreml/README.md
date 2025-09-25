@@ -23,7 +23,7 @@ uv run python convert-parakeet.py convert \
 ```
 
 Notes
-- Minimum deployment target: iOS 17. Compute units default to `ALL` in saved metadata.
+- Minimum deployment target: iOS 17. Export uses CPU_ONLY by default; runtime compute units can be set when loading the model (Python or Swift).
 - Audio is 16 kHz, single‑channel. The 15 s window is enforced during export and validation.
 
 ## Validate parity and speed (Torch vs CoreML)
@@ -83,14 +83,13 @@ Plots
 
 ## Quantization (size • quality • speed)
 
-`uv run python quantize_coreml.py quantize` evaluates several variants and writes a roll‑up to `parakeet_coreml_quantized/quantization_summary.json`. Plots are mirrored to `plots/quantize/<compute_units>/` (we include `plots/quantize/all/`). Quality here is reported as 1 − normalized L2 error (1.0 = identical). For JointDecision we report token‑id match rate, duration match, and token‑prob MAE.
+`uv run python quantize_coreml.py` evaluates several variants and writes a roll‑up to `parakeet_coreml_quantized/quantization_summary.json`. Plots are mirrored to `plots/quantize/<compute_units>/` (we include `plots/quantize/all/`). Quality here is reported as 1 − normalized L2 error (1.0 = identical). For JointDecision we report token‑id match rate, duration match, and token‑prob MAE.
 
 Quick highlights (ComputeUnits=ALL):
 - int8 linear (per‑channel): ~2.0× smaller across components with minimal quality loss
   - MelEncoder quality≈0.963; latency≈31.13 ms (baseline≈29.34 ms)
   - JointDecision acc≈0.995; latency≈1.96 ms (baseline≈2.15 ms)
 - int8 linear (per‑tensor symmetric): large encoder quality drop (≈0.50) — not recommended
-- Mel palettization 8‑bit: MelEncoder quality≈0.961, ~2.0× size reduction; 6‑/4‑bit degrade quality more
 
 Quantization plots (ALL)
 - Fused: `plots/quantize/all/fused_quality.png`, `fused_latency.png`, `fused_compression.png`, `fused_size.png`
@@ -110,18 +109,26 @@ uv run python compare-components.py compare --output-dir parakeet_coreml --runs 
 
 3) Run quantization sweeps (mirrors plots into `plots/quantize/<compute_units>/`)
 ```
-uv run python quantize_coreml.py quantize \
+uv run python quantize_coreml.py \
   --input-dir parakeet_coreml \
   --output-root parakeet_coreml_quantized \
   --compute-units ALL --runs 10
 ```
+
+Examples
+- Encoder 6‑bit palette only:
+  `uv run python quantize_coreml.py -c encoder-palettize`
+- MelEncoder 6‑bit palette only:
+  `uv run python quantize_coreml.py -c mel-palettize`
+  (By default, the script derives the component whitelist from the selected
+  variants. Use `-m/--component` to explicitly restrict or `-m all` to force all.)
 
 ## Notes & limits
 
 - Fixed 15‑second window shapes are required for all CoreML exports and validations.
 - Latency measurements are host‑side CoreML predictions (CPU+NE or ALL); on‑device results can differ by chip/OS.
 - For streaming decode, the exported decoder uses U=1 inputs with explicit LSTM state I/O.
-- Minimum deployment target is iOS 17; models are saved as MLProgram and eligible for ANE with `ComputeUnits=ALL`.
+- Minimum deployment target is iOS 17; models are saved as MLProgram and eligible for ANE when loaded with `ComputeUnits=ALL`.
 
 ## Acknowledgements
 

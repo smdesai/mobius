@@ -9,7 +9,7 @@ It also quantizes the rest of the components in the directory for completeness.
 
 Variants tried by default (examples):
   - int8-linear (per-channel)
-  - palettize 4/6/8-bit (global and Mel-only)
+  - palettize 6-bit (Mel-only)
   - jd-only variants (int8 and palette)
   - prune + int8
 
@@ -70,15 +70,16 @@ BYTES_IN_MB = 1024 * 1024
 
 DISPLAY_LABEL_OVERRIDES = {
     "mel6bit-palettize": "mel6bit",
-    "mel4bit-palettize": "mel4bit",
-    "mel8bit-palettize": "mel8bit",
-    "all8bit-palettize": "all8bit",
+    "enc6bit-palettize": "enc6bit",
     "int8-linear": "int8 linear",
-    "int8-linear_symmetric-pt": "int8 linear pt",
 }
 
 
-DEFAULT_TARGET_COMPONENTS: Tuple[str, str] = ("mel_encoder", "joint_decision")
+# When no explicit components are provided, we derive the set of
+# components to quantize from the selected variants' whitelists.
+# If any selected variant has no whitelist (i.e., applies globally),
+# we quantize all components.
+DEFAULT_TARGET_COMPONENTS: Tuple[str, str] = ()
 
 
 # Formatting helpers -------------------------------------------------------
@@ -547,9 +548,9 @@ def _quantize_dir(
         if not src_path.exists():
             continue
         dst_path = output_dir / src_name
-    # Use CPU+GPU for preprocessor to avoid NE preprocessor input size issues; others use CPU+NE
-    cu = ct.ComputeUnit.CPU_AND_GPU if name == "preprocessor" else ct.ComputeUnit.CPU_AND_NE
-    base_model = ct.models.MLModel(str(src_path), compute_units=cu)
+        # Use CPU+GPU for preprocessor to avoid NE preprocessor input size issues; others use CPU+NE
+        cu = ct.ComputeUnit.CPU_AND_GPU if name == "preprocessor" else ct.ComputeUnit.CPU_AND_NE
+        base_model = ct.models.MLModel(str(src_path), compute_units=cu)
         # Target iOS17 when running optimizations so the right ops are chosen
         try:
             base_model.minimum_deployment_target = ct.target.iOS17
@@ -627,7 +628,7 @@ def quantize(
 ) -> None:
     """Quantize models, then compare quality, compression, latency, and compile time.
 
-    Variants include int8-linear (per-channel/per-tensor/block), palettization (4/6/8-bit),
+    Variants include int8-linear (per-channel/per-tensor/block), palettization (6-bit),
     jd-only probes, and prune+int8. Baseline is the pre-converted models.
     """
     meta = _load_metadata(input_dir)
@@ -636,41 +637,10 @@ def quantize(
 
     components_meta = meta.get("components", {})
     component_lookup = {name.lower(): name for name in components_meta.keys()}
-
-    component_filter: Optional[Set[str]]
-    if components:
-        normalized_components = [comp.strip().lower() for comp in components if comp.strip()]
-        if any(comp == "all" for comp in normalized_components):
-            component_filter = None
-        else:
-            resolved: List[str] = []
-            invalid: List[str] = []
-            for comp in normalized_components:
-                match = component_lookup.get(comp)
-                if match is None:
-                    invalid.append(comp)
-                else:
-                    resolved.append(match)
-            if invalid:
-                available = ", ".join(sorted(component_lookup.values())) or "none"
-                bad = ", ".join(sorted(set(invalid)))
-                raise typer.BadParameter(
-                    f"Unknown component(s) for --component: {bad}. Available components: {available}."
-                )
-            component_filter = set(resolved)
-    else:
-        resolved_default = [component_lookup.get(comp.lower()) for comp in DEFAULT_TARGET_COMPONENTS]
-        component_filter = {comp for comp in resolved_default if comp is not None}
-        if not component_filter:
-            component_filter = None
-
-    if component_filter is None:
-        typer.echo("Quantizing components: all components (no whitelist)")
-    else:
-        typer.echo(
-            "Quantizing components: "
-            + ", ".join(sorted(component_filter))
-        )
+    # Defer computing component_filter until after variant/category selection so
+    # that, by default, we quantize exactly the components targeted by the
+    # selected variants (instead of a hard-coded subset).
+    component_filter: Optional[Set[str]] = None
 
     # Default audio if present
     default_audio = (BASE_DIR / "audio" / "yc_first_minute_16k_15s.wav").resolve()
@@ -749,59 +719,31 @@ def quantize(
             )],
             category="linear",
         ),
-        # Per-tensor flavor (sometimes faster to compile)
-        VariantConfig(
-            name="int8-linear_symmetric-pt",
-            steps=[(
-                "linear",
-                OptimizationConfig(global_config=OpLinearQuantizerConfig(mode="linear_symmetric", granularity="per_tensor")),
-            )],
-            category="linear",
-        ),
         # 6-bit palettization for MelEncoder only
         VariantConfig(
             name="mel6bit-palettize",
             steps=[(
                 "palettize",
                 OptimizationConfig(
-                    global_config=OpPalettizerConfig(
-                        mode="kmeans",
-                        nbits=6,
-                        granularity="per_channel",
-                    )
+                    global_config=OpPalettizerConfig(mode="kmeans", nbits=6)
                 ),
             )],
             category="mel-palettize",
             whitelist=["mel_encoder"],
         ),
+        # 6-bit palettization for Encoder only
         VariantConfig(
-            name="mel4bit-palettize",
+            name="enc6bit-palettize",
             steps=[(
                 "palettize",
-                OptimizationConfig(global_config=OpPalettizerConfig(mode="kmeans", nbits=4)),
+                OptimizationConfig(
+                    global_config=OpPalettizerConfig(mode="kmeans", nbits=6)
+                ),
             )],
-            category="mel-palettize",
-            whitelist=["mel_encoder"],
+            category="encoder-palettize",
+            whitelist=["encoder"],
         ),
-        # 8-bit palettization for MelEncoder only
-        VariantConfig(
-            name="mel8bit-palettize",
-            steps=[(
-                "palettize",
-                OptimizationConfig(global_config=OpPalettizerConfig(mode="kmeans", nbits=8)),
-            )],
-            category="mel-palettize",
-            whitelist=["mel_encoder"],
-        ),
-        # Global palettization flavors (8/4-bit) across all components
-        VariantConfig(
-            name="all8bit-palettize",
-            steps=[(
-                "palettize",
-                OptimizationConfig(global_config=OpPalettizerConfig(mode="kmeans", nbits=8)),
-            )],
-            category="global-palettize",
-        ),
+        # (removed) Global palettization variants
     ]
 
     available_categories = {variant.category for variant in variants}
@@ -829,6 +771,43 @@ def quantize(
         raise typer.Exit(code=0)
 
     typer.echo("Running variant categories: " + ", ".join(sorted(selected_categories)))
+
+    # Resolve the component whitelist now that variants are known.
+    if components:
+        normalized_components = [comp.strip().lower() for comp in components if comp.strip()]
+        if any(comp == "all" for comp in normalized_components):
+            component_filter = None
+        else:
+            resolved: List[str] = []
+            invalid: List[str] = []
+            for comp in normalized_components:
+                match = component_lookup.get(comp)
+                if match is None:
+                    invalid.append(comp)
+                else:
+                    resolved.append(match)
+            if invalid:
+                available = ", ".join(sorted(component_lookup.values())) or "none"
+                bad = ", ".join(sorted(set(invalid)))
+                raise typer.BadParameter(
+                    f"Unknown component(s) for --component: {bad}. Available components: {available}."
+                )
+            component_filter = set(resolved)
+    else:
+        # Derive from selected variants' whitelists
+        derived: Set[str] = set()
+        has_global = False
+        for v in variants:
+            if v.whitelist is None:
+                has_global = True
+                break
+            derived.update(v.whitelist)
+        component_filter = None if has_global or not derived else derived
+
+    if component_filter is None:
+        typer.echo("Quantizing components: all components (derived)")
+    else:
+        typer.echo("Quantizing components: " + ", ".join(sorted(component_filter)) + " (derived)")
 
     # Aggregate results (baseline + variants)
     summary: Dict[str, Dict[str, object]] = {}

@@ -85,10 +85,51 @@ def _tensor_shape(tensor: torch.Tensor) -> Tuple[int, ...]:
     return tuple(int(dim) for dim in tensor.shape)
 
 
+def _parse_compute_units(name: str) -> ct.ComputeUnit:
+    """Parse a human-friendly compute units string into ct.ComputeUnit.
+
+    Accepted (case-insensitive): ALL, CPU_ONLY, CPU_AND_GPU, CPU_AND_NE.
+    """
+    normalized = str(name).strip().upper()
+    mapping = {
+        "ALL": ct.ComputeUnit.ALL,
+        "CPU_ONLY": ct.ComputeUnit.CPU_ONLY,
+        "CPU_AND_GPU": ct.ComputeUnit.CPU_AND_GPU,
+        "CPU_AND_NE": ct.ComputeUnit.CPU_AND_NE,
+        "CPU_AND_NEURALENGINE": ct.ComputeUnit.CPU_AND_NE,
+    }
+    if normalized not in mapping:
+        raise typer.BadParameter(
+            f"Unknown compute units '{name}'. Choose from: " + ", ".join(mapping.keys())
+        )
+    return mapping[normalized]
+
+
+def _parse_compute_precision(name: Optional[str]) -> Optional[ct.precision]:
+    """Parse compute precision string into ct.precision or None.
+
+    Accepted (case-insensitive): FLOAT32, FLOAT16. If None/empty, returns None (tool default).
+    """
+    if name is None:
+        return None
+    normalized = str(name).strip().upper()
+    if normalized == "":
+        return None
+    mapping = {
+        "FLOAT32": ct.precision.FLOAT32,
+        "FLOAT16": ct.precision.FLOAT16,
+    }
+    if normalized not in mapping:
+        raise typer.BadParameter(
+            f"Unknown compute precision '{name}'. Choose from: " + ", ".join(mapping.keys())
+        )
+    return mapping[normalized]
+
+
 # Validation logic removed; use compare-compnents.py for comparisons.
 
 
-# Fixed export choices: ALL (ANE eligible) + FP32, min target iOS17
+# Fixed export choices: CPU_ONLY + FP32, min target iOS17
 
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
@@ -109,14 +150,29 @@ def convert(
         help="Model identifier to download when --nemo-path is omitted",
     ),
     output_dir: Path = typer.Option(Path("parakeet_coreml"), help="Directory where mlpackages and metadata will be written"),
+    preprocessor_cu: str = typer.Option(
+        "CPU_ONLY",
+        "--preprocessor-cu",
+        help="Compute units for preprocessor (default CPU_ONLY)",
+    ),
+    mel_encoder_cu: str = typer.Option(
+        "CPU_ONLY",
+        "--mel-encoder-cu",
+        help="Compute units for fused mel+encoder (default CPU_ONLY)",
+    ),
+    compute_precision: Optional[str] = typer.Option(
+        None,
+        "--compute-precision",
+        help="Export precision: FLOAT32 (default) or FLOAT16 to shrink non-quantized weights.",
+    ),
 ) -> None:
     """Export all Parakeet sub-modules to CoreML with a fixed 15-second window."""
     # Runtime CoreML contract keeps U=1 so the prediction net matches the streaming decoder.
     export_settings = ExportSettings(
         output_dir=output_dir,
-        compute_units=ct.ComputeUnit.CPU_AND_NE,  # Default: ANE for all except preprocessor
+        compute_units=ct.ComputeUnit.CPU_ONLY,  # Default: CPU-only for all components
         deployment_target=ct.target.iOS17,  # iOS 17+ features and kernels
-        compute_precision=None,  # keep FP32 for parity; quantization handled separately
+        compute_precision=_parse_compute_precision(compute_precision),
         max_audio_seconds=15.0,
         max_symbol_steps=1,
     )
@@ -125,6 +181,8 @@ def convert(
     typer.echo(asdict(export_settings))
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    pre_cu = _parse_compute_units(preprocessor_cu)
+    melenc_cu = _parse_compute_units(mel_encoder_cu)
 
     if nemo_path is not None:
         typer.echo(f"Loading NeMo model from {nemo_path}…")
@@ -207,25 +265,34 @@ def convert(
         joint_ref = joint_ref.clone()
 
         typer.echo("Tracing and converting preprocessor…")
+        # Ensure tracing happens on CPU explicitly
+        preprocessor = preprocessor.cpu()
+        audio_tensor = audio_tensor.cpu()
+        audio_length = audio_length.cpu()
         traced_preprocessor = torch.jit.trace(
             preprocessor, (audio_tensor, audio_length), strict=False
         )
         traced_preprocessor.eval()
         preprocessor_inputs = [
-            ct.TensorType(name="audio_signal", shape=(1, max_samples), dtype=np.float32),
+            # Allow variable-length audio up to the fixed 15s window using RangeDim
+            ct.TensorType(
+                name="audio_signal",
+                shape=(1, ct.RangeDim(1, max_samples)),
+                dtype=np.float32,
+            ),
             ct.TensorType(name="audio_length", shape=(1,), dtype=np.int32),
         ]
         preprocessor_outputs = [
             ct.TensorType(name="mel", dtype=np.float32),
             ct.TensorType(name="mel_length", dtype=np.int32),
         ]
-        # Preprocessor must target CPU+GPU to avoid oversized NE input tensors
+        # Preprocessor compute units (parametrized; default CPU_ONLY)
         preprocessor_model = _coreml_convert(
             traced_preprocessor,
             preprocessor_inputs,
             preprocessor_outputs,
             export_settings,
-            compute_units_override=ct.ComputeUnit.CPU_AND_GPU,
+            compute_units_override=pre_cu,
         )
         preprocessor_path = output_dir / "parakeet_preprocessor.mlpackage"
         _save_mlpackage(
@@ -247,13 +314,13 @@ def convert(
             ct.TensorType(name="encoder", dtype=np.float32),
             ct.TensorType(name="encoder_length", dtype=np.int32),
         ]
-        # Encoder targets ANE
+        # Encoder: CPU only
         encoder_model = _coreml_convert(
             traced_encoder,
             encoder_inputs,
             encoder_outputs,
             export_settings,
-            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
+            compute_units_override=ct.ComputeUnit.CPU_ONLY,
         )
         encoder_path = output_dir / "parakeet_encoder.mlpackage"
         _save_mlpackage(
@@ -270,6 +337,7 @@ def convert(
         )
         traced_mel_encoder.eval()
         mel_encoder_inputs = [
+            # Keep fixed 15s window for fused Mel+Encoder
             ct.TensorType(name="audio_signal", shape=(1, max_samples), dtype=np.float32),
             ct.TensorType(name="audio_length", shape=(1,), dtype=np.int32),
         ]
@@ -277,13 +345,13 @@ def convert(
             ct.TensorType(name="encoder", dtype=np.float32),
             ct.TensorType(name="encoder_length", dtype=np.int32),
         ]
-        # Fused mel+encoder targets ANE for completeness
+        # Fused mel+encoder compute units (parametrized; default CPU_ONLY)
         mel_encoder_model = _coreml_convert(
             traced_mel_encoder,
             mel_encoder_inputs,
             mel_encoder_outputs,
             export_settings,
-            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
+            compute_units_override=melenc_cu,
         )
         mel_encoder_path = output_dir / "parakeet_mel_encoder.mlpackage"
         _save_mlpackage(
@@ -310,13 +378,13 @@ def convert(
             ct.TensorType(name="h_out", dtype=np.float32),
             ct.TensorType(name="c_out", dtype=np.float32),
         ]
-        # Decoder targets ANE
+        # Decoder: CPU only
         decoder_model = _coreml_convert(
             traced_decoder,
             decoder_inputs,
             decoder_outputs,
             export_settings,
-            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
+            compute_units_override=ct.ComputeUnit.CPU_ONLY,
         )
         decoder_path = output_dir / "parakeet_decoder.mlpackage"
         _save_mlpackage(
@@ -339,13 +407,13 @@ def convert(
         joint_outputs = [
             ct.TensorType(name="logits", dtype=np.float32),
         ]
-        # Joint targets ANE
+        # Joint: CPU only
         joint_model = _coreml_convert(
             traced_joint,
             joint_inputs,
             joint_outputs,
             export_settings,
-            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
+            compute_units_override=ct.ComputeUnit.CPU_ONLY,
         )
         joint_path = output_dir / "parakeet_joint.mlpackage"
         _save_mlpackage(
@@ -374,13 +442,13 @@ def convert(
             ct.TensorType(name="token_prob", dtype=np.float32),
             ct.TensorType(name="duration", dtype=np.int32),
         ]
-        # JointDecision targets ANE
+        # JointDecision: CPU only
         joint_decision_model = _coreml_convert(
             traced_joint_decision,
             joint_decision_inputs,
             joint_decision_outputs,
             export_settings,
-            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
+            compute_units_override=ct.ComputeUnit.CPU_ONLY,
         )
         joint_decision_path = output_dir / "parakeet_joint_decision.mlpackage"
         _save_mlpackage(
@@ -410,13 +478,13 @@ def convert(
             ct.TensorType(name="token_prob", dtype=np.float32),
             ct.TensorType(name="duration", dtype=np.int32),
         ]
-        # Single-step JointDecision targets ANE
+        # Single-step JointDecision: CPU only
         jd_single_model = _coreml_convert(
             traced_jd_single,
             jd_single_inputs,
             jd_single_outputs,
             export_settings,
-            compute_units_override=ct.ComputeUnit.CPU_AND_NE,
+            compute_units_override=ct.ComputeUnit.CPU_ONLY,
         )
         jd_single_path = output_dir / "parakeet_joint_decision_single_step.mlpackage"
         _save_mlpackage(
