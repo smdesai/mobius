@@ -34,6 +34,12 @@ models/
 
 For usage, look at our other repos like [FluidAudio](https://github.com/FluidInference/FluidAudio) and [fluid-server](https://github.com/FluidInference/fluid-server)
 
+Things to keep in mind:
+
+- Trace with .CpuOnly
+- Target iOS17+ (most users are on iOS17/macOS 14 right now)
+- Use `uv` to manage dependencies
+
 ## Citations
 
 ```code
