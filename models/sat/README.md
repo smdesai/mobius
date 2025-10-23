@@ -1,6 +1,8 @@
 # Segment Any Text CoreML
 Segment Any Text is state-of-the-art sentence segmentation with 3 Transfomer layers. A pytorch version of the model is used in [wtsplit](https://github.com/segment-any-text/wtpsplit) and additional details can be found in this [paper](https://arxiv.org/abs/2406.16678).
 
+If you wish to skip the CoreML conversion, you can download a precompiled `SaT.mlmodelc` from [Hugging Face](https://huggingface.co/smdesai/SaT).
+
 
 # CoreML Conversion
 
