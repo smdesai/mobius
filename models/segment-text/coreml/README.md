@@ -51,7 +51,7 @@ Usage: convert_sat.py [OPTIONS]
 
 Run the following to compile the model.
 ```bash
-python compile_mlmodelc.py --coreml-dir sat_coreml
+python compile_mlmodelc.py --coreml-dir sat_coreml --output-dir compiled
 ```
 
 This produces `SaT.mlmodelc` in the `compiled` directory.
@@ -61,6 +61,8 @@ Here is the complete usage:
  Usage: compile_mlmodelc.py [OPTIONS]
 
  Options
-  --coreml-dir        PATH  Directory where mlpackages and metadata are written
-                            [default: sat_coreml]                               
+  --coreml-dir        PATH  Directory where the mlpackage is
+                            [default: sat_coreml]
+  --output-dir        PATH  Directory where the compiled model is written
+                            [default: compiled]
 ```

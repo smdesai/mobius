@@ -41,13 +41,12 @@ def gather_packages(dir: str) -> list[Path]:
     return packages
 
 
-def compile_package(package: Path) -> None:
+def compile_package(package: Path, output_dir: Path) -> None:
     """Compile a single ``.mlpackage`` bundle using ``xcrun coremlcompiler``."""
     relative_pkg = package.relative_to(BASE_DIR)
-    #output_dir = OUTPUT_ROOT / relative_pkg.parent
-    output_dir = OUTPUT_ROOT 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{package.stem}.mlmodelc"
+    resolved_output_dir = output_dir if output_dir.is_absolute() else BASE_DIR / output_dir
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = resolved_output_dir / f"{package.stem}.mlmodelc"
 
     if output_path.exists():
         shutil.rmtree(output_path)
@@ -57,10 +56,15 @@ def compile_package(package: Path) -> None:
         "coremlcompiler",
         "compile",
         str(package),
-        str(output_dir),
+        str(resolved_output_dir),
     ]
 
-    print(f"Compiling {relative_pkg} -> {output_path.relative_to(BASE_DIR)}")
+    try:
+        relative_output = output_path.relative_to(BASE_DIR)
+    except ValueError:
+        relative_output = output_path
+
+    print(f"Compiling {relative_pkg} -> {relative_output}")
     subprocess.run(cmd, check=True)
 
 
@@ -68,7 +72,11 @@ def compile_package(package: Path) -> None:
 def compile(
     coreml_dir: Path = typer.Option(
         Path("sat_coreml"),
-        help="Directory where mlpackages and metadata are written",
+        help="Directory where the mlpackage is",
+    ),
+    output_dir: Path = typer.Option(
+        Path("compiled"),
+        help="Directory where the compiled model is written",
     ),
 ):
     ensure_coremlcompiler()
@@ -80,7 +88,7 @@ def compile(
 
     for package in packages:
         try:
-            compile_package(package)
+            compile_package(package, output_dir)
         except subprocess.CalledProcessError as exc:
             print(f"Failed to compile {package}: {exc}", file=sys.stderr)
             sys.exit(exc.returncode)

@@ -83,7 +83,24 @@ def convert(
         return_dict=False,
         torchscript=True,
         trust_remote_code=True,
-    ).eval()
+    ).eval().to("cpu")
+
+    class WrappedModel(torch.nn.Module):
+        def __init__(self, base_model: torch.nn.Module):
+            super().__init__()
+            self.base_model = base_model
+
+        def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+            input_ids = input_ids.to(dtype=torch.long)
+            attention_mask = attention_mask.to(dtype=torch.long)
+            outputs = self.base_model(input_ids, attention_mask)
+            if isinstance(outputs, (tuple, list)):
+                logits = outputs[0]
+            else:
+                logits = outputs
+            return logits.to(dtype=torch.float32)
+
+    wrapped_model = WrappedModel(model).eval()
 
     tokenizer = AutoTokenizer.from_pretrained("facebookAI/xlm-roberta-base")
     tokenized = tokenizer(
@@ -93,12 +110,17 @@ def convert(
         padding="max_length",
     )
 
-    traced_model = torch.jit.trace(
-        model,
-        (tokenized["input_ids"], tokenized["attention_mask"])
+    example_inputs = (
+        tokenized["input_ids"].to(torch.int32),
+        tokenized["attention_mask"].to(torch.int32),
     )
+    traced_model = torch.jit.trace(wrapped_model, example_inputs, strict=False)
+    traced_model.eval()
 
-    outputs = [ct.TensorType(name="output")]
+    with torch.no_grad():
+        sample_output = wrapped_model(*example_inputs)
+
+    output_spec = ct.TensorType(name="logits", dtype=np.float32)
 
     mlpackage = ct.convert(
         traced_model,
@@ -111,8 +133,9 @@ def convert(
             )
             for name, tensor in tokenized.items()
         ],
-        outputs=outputs,
+        outputs=[output_spec],
         compute_units=ct.ComputeUnit.ALL,
+        compute_precision=ct.precision.FLOAT32,
         minimum_deployment_target=ct.target.iOS18,
     )
 
