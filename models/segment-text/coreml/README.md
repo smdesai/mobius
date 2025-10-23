@@ -3,6 +3,10 @@ Segment Any Text is state-of-the-art sentence segmentation with 3 Transfomer lay
 
 If you wish to skip the CoreML conversion, you can download a precompiled `SaT.mlmodelc` from [Hugging Face](https://huggingface.co/smdesai/SaT).
 
+## Swift Usage
+
+Swift sample code for testing and integrating the Core ML model is available at [smdesai/SegmentText](https://github.com/smdesai/SegmentText).
+
 
 # CoreML Conversion
 
