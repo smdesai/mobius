@@ -3,6 +3,10 @@ Segment Any Text is state-of-the-art sentence segmentation with 3 Transfomer lay
 
 If you wish to skip the CoreML conversion, you can download a precompiled `SaT.mlmodelc` from [Hugging Face](https://huggingface.co/smdesai/SaT).
 
+## Swift Usage
+
+Swift sample code for testing and integrating the Core ML model is available at [smdesai/SegmentText](https://github.com/smdesai/SegmentText).
+
 
 # CoreML Conversion
 
@@ -51,7 +55,7 @@ Usage: convert_sat.py [OPTIONS]
 
 Run the following to compile the model.
 ```bash
-python compile_mlmodelc.py --coreml-dir sat_coreml
+python compile_mlmodelc.py --coreml-dir sat_coreml --output-dir compiled
 ```
 
 This produces `SaT.mlmodelc` in the `compiled` directory.
@@ -61,6 +65,8 @@ Here is the complete usage:
  Usage: compile_mlmodelc.py [OPTIONS]
 
  Options
-  --coreml-dir        PATH  Directory where mlpackages and metadata are written
-                            [default: sat_coreml]                               
+  --coreml-dir        PATH  Directory where the mlpackage is
+                            [default: sat_coreml]
+  --output-dir        PATH  Directory where the compiled model is written
+                            [default: compiled]
 ```
