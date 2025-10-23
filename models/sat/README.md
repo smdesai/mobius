@@ -24,7 +24,7 @@ Run the conversion script to create the SaT Core ML package:
 python convert-sat.py --model-id segment-any-text/sat-3l-sm  --output-dir sat_coreml
 ```
 
-This produces `SaT.mlpackage` in the sat_coreml directory.
+This produces `SaT.mlpackage` in the `sat_coreml` directory.
 
 Here is the complete usage:
 ```bash
@@ -52,6 +52,7 @@ Run the following to compile the model.
 python compile_mlmodelc.py --coreml-dir sat_coreml
 ```
 
+This produces `SaT.mlmodelc` in the `compiled` directory.
 
 Here is the complete usage:
 ```bash
