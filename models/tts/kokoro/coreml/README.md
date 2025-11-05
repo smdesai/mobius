@@ -1,6 +1,6 @@
 # Kokoro TTS CoreML Implementation
 
-High-quality neural Text-to-Speech for Apple devices. Convert Kokoro-82M (StyleTTS2-based) models to CoreML for on-device inference on iOS and macOS.
+Neural Text-to-Speech for Apple devices. Convert Kokoro-82M (StyleTTS2-based) models to CoreML for on-device inference on iOS and macOS.
 
 **Features**: Multi-speaker synthesis • Natural prosody • 8-12x real-time • On-device privacy • English optimized
 
