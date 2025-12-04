@@ -185,11 +185,13 @@ class JointDecisionSingleStep(torch.nn.Module):
       - token_prob: [1, 1, 1] float32
       - duration: [1, 1, 1] int32
     """
-    def __init__(self, joint: JointWrapper, vocab_size: int, num_extra: int) -> None:
+    def __init__(self, joint: JointWrapper, vocab_size: int, num_extra: int, top_k: int = 64) -> None:
         super().__init__()
         self.joint = joint
         self.vocab_with_blank = int(vocab_size) + 1
         self.num_extra = int(num_extra)
+        # Emit top-K candidates to enable host-side re-ranking with contextual biasing
+        self.top_k = int(top_k)
 
     def forward(self, encoder_step: torch.Tensor, decoder_step: torch.Tensor):
         # Reuse JointWrapper which expects [B, D, T] and [B, D, U]
@@ -203,7 +205,13 @@ class JointDecisionSingleStep(torch.nn.Module):
             token_probs_all, dim=-1, index=token_ids.long().unsqueeze(-1)
         ).squeeze(-1)
         duration = torch.argmax(duration_logits, dim=-1, keepdim=False).to(dtype=torch.int32)
-        return token_ids, token_prob, duration
+
+        # Also expose top-K candidates for host-side re-ranking.
+        # Shapes preserved as [1, 1, 1, K] to match CoreML broadcasting expectations.
+        # Note: topk expects last dimension; original shape is [1, 1, 1, V].
+        topk_logits, topk_ids_long = torch.topk(token_logits, k=min(self.top_k, token_logits.shape[-1]), dim=-1)
+        topk_ids = topk_ids_long.to(dtype=torch.int32)
+        return token_ids, token_prob, duration, topk_ids, topk_logits
 
 
 def _coreml_convert(

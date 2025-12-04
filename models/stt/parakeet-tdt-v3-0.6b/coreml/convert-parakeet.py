@@ -477,6 +477,8 @@ def convert(
             ct.TensorType(name="token_id", dtype=np.int32),
             ct.TensorType(name="token_prob", dtype=np.float32),
             ct.TensorType(name="duration", dtype=np.int32),
+            ct.TensorType(name="top_k_ids", dtype=np.int32),
+            ct.TensorType(name="top_k_logits", dtype=np.float32),
         ]
         # Single-step JointDecision: CPU only
         jd_single_model = _coreml_convert(
