@@ -37,7 +37,7 @@ special_vocab = ["<pad>", "<s>", "</s>", "<unk>"]
 grapheme_vocab = special_vocab + grapheme_chars
 phoneme_vocab = special_vocab + phoneme_chars
 grapheme_to_id = {ch: i for i, ch in enumerate(grapheme_vocab)}
-id_to_phoneme = {i: ch for i, ch in enumerate(phoneme_vocab)}
+id_to_phoneme = {str(i): ch for i, ch in enumerate(phoneme_vocab)}
 
 with open("g2p_vocab.json", "w") as f:
     json.dump({
@@ -241,7 +241,7 @@ print("\nVerifying end-to-end (CoreML vs PyTorch)...")
 with torch.no_grad():
     generated = model.generate(input_ids=input_tensor)
 pt_phonemes = "".join(
-    id_to_phoneme.get(t, "?") for t in generated[0].tolist() if t > 3
+    id_to_phoneme.get(str(t), "?") for t in generated[0].tolist() if t > 3
 )
 
 # CoreML greedy decode
@@ -263,7 +263,7 @@ for _ in range(64):
     decoder_ids.append(next_token)
 
 coreml_phonemes = "".join(
-    id_to_phoneme.get(t, "?") for t in decoder_ids if t > 3
+    id_to_phoneme.get(str(t), "?") for t in decoder_ids if t > 3
 )
 
 print(f"  PyTorch: '{test_word}' -> {pt_phonemes}")

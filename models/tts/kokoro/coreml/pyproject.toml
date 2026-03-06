@@ -2,7 +2,7 @@
 name = "kokoro-coreml"
 version = "0.1.0"
 description = "Kokoro TTS CoreML conversion and inference"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "coremltools>=8.0",
     "kokoro>=0.9",
