@@ -239,7 +239,7 @@ Details: [Model Architecture Doc](doc/v21_conversion_script_outline.md)
 
 ## G2P (Grapheme-to-Phoneme)
 
-The `G2P/` directory contains a standalone CoreML conversion for a transformer-based grapheme-to-phoneme model. This is an English-only neural replacement for eSpeak, converting raw text into phoneme sequences that feed into the Kokoro TTS pipeline.
+The `g2p/` directory contains a standalone CoreML conversion for a transformer-based grapheme-to-phoneme model. This is an English-only neural replacement for eSpeak, converting raw text into phoneme sequences that feed into the Kokoro TTS pipeline.
 
 The model is a fine-tuned BART encoder-decoder ([PeterReid/graphemes_to_phonemes_en_us](https://huggingface.co/PeterReid/graphemes_to_phonemes_en_us)) with a manual decoder implementation.
 
@@ -251,8 +251,8 @@ The model is a fine-tuned BART encoder-decoder ([PeterReid/graphemes_to_phonemes
 **Usage**:
 
 ```bash
-cd G2P
-python convert_to_coreml.py
+cd g2p
+python convert-to-coreml.py
 ```
 
 The script downloads the model, verifies the manual decoder matches HuggingFace output, converts both encoder and decoder to CoreML, and runs end-to-end verification.

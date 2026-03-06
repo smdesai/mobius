@@ -10,7 +10,7 @@ The decoder uses a manual implementation to avoid HuggingFace ops (new_ones,
 dynamic mask creation) that coremltools can't convert.
 
 Usage:
-  pip install coremltools
+  uv sync
   python convert_to_coreml.py
 """
 
@@ -200,7 +200,7 @@ encoder_coreml = ct.convert(
     traced_encoder,
     inputs=[ct.TensorType(name="input_ids", shape=(1, ct.RangeDim(1, 64)), dtype=np.int32)],
     outputs=[ct.TensorType(name="encoder_hidden_states")],
-    minimum_deployment_target=ct.target.iOS16,
+    minimum_deployment_target=ct.target.iOS17,
 )
 encoder_coreml.save("G2PEncoder.mlpackage")
 print("Saved G2PEncoder.mlpackage")
@@ -228,7 +228,7 @@ decoder_coreml = ct.convert(
         ct.TensorType(name="causal_mask",           shape=(1, ct.RangeDim(1, 64), ct.RangeDim(1, 64)),   dtype=np.float32),
     ],
     outputs=[ct.TensorType(name="logits")],
-    minimum_deployment_target=ct.target.iOS16,
+    minimum_deployment_target=ct.target.iOS17,
 )
 decoder_coreml.save("G2PDecoder.mlpackage")
 print("Saved G2PDecoder.mlpackage")
