@@ -28,7 +28,7 @@ def _device_name(device: Any) -> str:
         return "gpu"
     if "NeuralEngine" in cls_name:
         return "ane"
-    return cls_name
+    return "unknown"
 
 
 def _walk_operations(block: Any) -> list[Any]:

@@ -88,6 +88,8 @@ def _make_input_provider(model_desc: Any) -> Any:
 
 
 def _compute_stats(times_ms: list[float]) -> dict:
+    if not times_ms:
+        return {"median_ms": 0.0, "mean_ms": 0.0, "min_ms": 0.0, "max_ms": 0.0, "std_ms": 0.0}
     times_ms.sort()
     n = len(times_ms)
     mean = sum(times_ms) / n
