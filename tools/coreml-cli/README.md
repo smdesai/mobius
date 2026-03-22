@@ -97,7 +97,7 @@ Uses [PyObjC](https://pyobjc.readthedocs.io/) to call macOS CoreML framework API
 1. **Public API** — `MLComputePlan` (macOS 14+) for per-operation device assignment and cost weights
 2. **Private API** — `MLE5Engine.segmentationAnalyticsAndReturnError:` for richer data including backend support matrices and estimated runtimes per backend
 
-The private APIs were discovered through Objective-C runtime introspection, inspired by:
+Heavily inspired by: 
 
 - **[maderix/ANE](https://github.com/maderix/ANE)** — reverse-engineered private `_ANEClient`/`_ANECompiler` APIs for direct Neural Engine access. Their runtime introspection approach (`objc_msgSend`, `NSClassFromString`) informed how we navigate CoreML's internal object graph.
 - **[freedomtan/coreml_modelc_profling](https://github.com/freedomtan/coreml_modelc_profling)** — per-operation profiling using both public `MLComputePlan` and undocumented `MLE5Engine` APIs. Their Objective-C implementation was the direct reference for our private profiler.
