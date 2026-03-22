@@ -70,6 +70,12 @@ uv run coreml-cli model.mlmodelc --ops
 # Per-op data with private API details (backend support, estimated runtimes)
 uv run coreml-cli model.mlmodelc --detailed
 
+# ANE fallback analysis — show CPU ops grouped by rejection reason
+uv run coreml-cli model.mlmodelc --fallback
+
+# Fallback analysis as JSON (for agent consumption)
+uv run coreml-cli model.mlmodelc --fallback --json
+
 # Control benchmark iterations
 uv run coreml-cli model.mlmodelc --iterations 50
 
@@ -79,6 +85,8 @@ uv run coreml-cli model.mlmodelc --debug
 
 ## What it reports
 
+### Benchmark mode (default)
+
 For each model and compute unit configuration (`all`, `cpu_only`, `cpu_and_gpu`, `cpu_and_neural_engine`):
 
 - **Device assignment** — % of operations on CPU, GPU, and ANE (Neural Engine)
@@ -87,6 +95,23 @@ For each model and compute unit configuration (`all`, `cpu_only`, `cpu_and_gpu`,
 - **Model metadata** — precision, I/O shapes, author, description, coremltools version
 - **Per-op breakdown** (`--ops`) — each operation's name, type, assigned device, and cost weight
 - **Private API data** (`--detailed`) — selected backend, all supported backends, estimated runtime per backend, validation messages explaining why backends were rejected
+
+### Fallback analysis mode (`--fallback`)
+
+Shows only ops that are **not** on ANE, grouped by rejection reason. Designed for the ANE optimization loop: change conversion → reconvert → `--fallback` → identify blockers → fix → repeat.
+
+For each CPU-fallback op, reports:
+- **Why ANE rejected it** — e.g., "Unsupported tensor data type: int32", "Unsupported MIL operation"
+- **How many ops** — grouped by rejection reason with op type counts
+- **Estimated CPU cost** — how much latency the fallback adds
+- **Which ops** — names for tracing back to the conversion script
+
+Common ANE rejection reasons and fixes:
+- `Unsupported tensor data type: int32` — cast to float16 before these operations
+- `Unsupported MIL operation "lstm"` — decompose into supported ops (matmul, sigmoid, tanh)
+- `Unsupported MIL operation "logical_and"` — replace with float multiply workaround
+- `Unable to resolve operation input` — cascading from another CPU op; fix the upstream op first
+- `ANE supported but scheduler chose CPU` — data transfer overhead; often not worth fixing
 
 ## How it works
 

@@ -15,8 +15,9 @@ All commands run from the target directory (e.g., `models/stt/parakeet-tdt-v3-0.
 - `uv run python compare-models.py --audio-file <path> --coreml-dir <dir>` — validate parity
 
 Profiling (from `tools/coreml-cli/`):
-- `uv run coreml-cli path/to/model.mlmodelc` — profile across all compute unit configs
-- `uv run coreml-cli path/to/models/ --json` — JSON output for all models in a directory
+- `uv run coreml-cli path/to/model.mlmodelc` — benchmark: latency, compile time, device % across all compute unit configs
+- `uv run coreml-cli model.mlmodelc --fallback` — ANE optimization: show CPU fallback ops grouped by rejection reason
+- `uv run coreml-cli model.mlmodelc --fallback --json` — structured fallback analysis for agent parsing
 
 ## Constraints
 - Trace with `.CpuOnly`

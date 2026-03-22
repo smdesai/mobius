@@ -113,3 +113,46 @@ def emit_table(data: dict[str, Any]) -> None:
                 f"{compile_str} "
                 f"{predict_str}"
             )
+
+
+def emit_fallback_table(data: dict[str, Any]) -> None:
+    width = _terminal_width()
+
+    hw = data.get("hardware", {})
+    if hw:
+        print(f"Device:  {hw.get('chip', '?')} ({hw.get('device', '?')})")
+        print(f"OS:      {hw.get('os_version', '?')}")
+
+    for m in data["models"]:
+        name = m["model_name"]
+        fb = m["fallback"]
+
+        rule = "─" * max(width - len(name) - 5, 10)
+        print(f"\n── {name} {rule}")
+
+        total = fb["total_ops"]
+        ane = fb["ane_ops"]
+        cpu = fb["cpu_ops"]
+        print(f"  {ane}/{total} ops on ANE ({fb['ane_percent']}%), {cpu} on CPU")
+
+        if not fb["reasons"]:
+            print(f"  No CPU fallback ops.")
+            continue
+
+        print()
+        for r in fb["reasons"]:
+            # Header: reason + count
+            type_summary = ", ".join(
+                f"{t}×{c}" for t, c in r["op_types"].items()
+            )
+            print(f"  {r['reason']}")
+            print(f"    {r['count']} ops: {type_summary}")
+            if r["estimated_cpu_runtime_ms"] > 0.001:
+                print(f"    est. CPU cost: {r['estimated_cpu_runtime_ms']:.3f}ms")
+            # List op names compactly
+            ops_str = ", ".join(r["ops"])
+            if len(ops_str) > width - 6:
+                ops_str = ops_str[: width - 9] + "..."
+            print(f"    [{ops_str}]")
+            print()
+    print()

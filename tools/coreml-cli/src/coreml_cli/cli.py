@@ -14,10 +14,11 @@ from typing import Optional
 import typer
 
 from .compute_plan import COMPUTE_UNITS, get_compute_plan
+from .fallback import analyze_fallback
 from .latency import measure_latency
 from .metadata import get_model_metadata
 from .model_loader import discover_models
-from .output import emit_json, emit_table
+from .output import emit_fallback_table, emit_json, emit_table
 from .private_profiler import get_detailed_profile
 
 app = typer.Typer(add_completion=False)
@@ -77,6 +78,9 @@ def bench(
     detailed: bool = typer.Option(
         False, "--detailed", "-d", help="Per-op private API data (implies --ops)"
     ),
+    fallback: bool = typer.Option(
+        False, "--fallback", "-f", help="Show CPU fallback ops grouped by reason (ANE optimization)"
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Output JSON instead of table"
     ),
@@ -97,6 +101,25 @@ def bench(
 
     models = discover_models(model_path)
     _log(f"Found {len(models)} model(s)")
+
+    # Fallback analysis mode — separate path
+    if fallback:
+        cu = units.value if units else "cpu_and_neural_engine"
+        all_fb = []
+        for model in models:
+            _log(f"Analyzing fallback for {model.name}...")
+            fb = analyze_fallback(model, cu)
+            all_fb.append({
+                "model_path": str(model),
+                "model_name": model.stem,
+                "fallback": fb,
+            })
+        output = {"hardware": _get_hardware_info(), "models": all_fb}
+        if json_output:
+            emit_json(output)
+        else:
+            emit_fallback_table(output)
+        return
 
     if units is not None:
         unit_configs = [units.value]
