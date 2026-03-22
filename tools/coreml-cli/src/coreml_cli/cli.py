@@ -150,8 +150,8 @@ def bench(
                 model, unit_config, iterations=iterations
             )
             lat = result["latency"]
-            if "compile_ms" in lat:
-                _log(f"    compile={lat['compile_ms']:.1f}ms")
+            if "cold_compile_ms" in lat:
+                _log(f"    cold_compile={lat['cold_compile_ms']:.1f}ms warm_compile={lat['warm_compile_ms']:.1f}ms")
             if "median_ms" in lat:
                 _log(f"    predict median={lat['median_ms']:.1f}ms")
             elif "error" in lat:

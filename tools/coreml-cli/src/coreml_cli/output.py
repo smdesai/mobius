@@ -93,12 +93,13 @@ def emit_table(data: dict[str, Any]) -> None:
 
         # Benchmark table
         print()
-        print(f"  {'Compute Unit':<25s} {'CPU':>6s} {'GPU':>6s} {'ANE':>6s} {'Compile':>9s} {'Predict':>9s}")
-        print(f"  {'─' * 64}")
+        print(f"  {'Compute Unit':<25s} {'CPU':>6s} {'GPU':>6s} {'ANE':>6s} {'Cold Compile':>14s} {'Warm Compile':>14s} {'Predict':>9s}")
+        print(f"  {'─' * 84}")
         for r in m["results"]:
             s = r["summary"]
             lat = r.get("latency", {})
-            compile_str = f"{lat['compile_ms']:>7.0f}ms" if "compile_ms" in lat else f"{'err':>9s}"
+            cold_str = f"{lat['cold_compile_ms']:>12.0f}ms" if "cold_compile_ms" in lat else f"{'err':>14s}"
+            warm_str = f"{lat['warm_compile_ms']:>12.0f}ms" if "warm_compile_ms" in lat else f"{'err':>14s}"
             if "median_ms" in lat:
                 predict_str = f"{lat['median_ms']:>7.2f}ms"
             elif "error" in lat:
@@ -110,7 +111,8 @@ def emit_table(data: dict[str, Any]) -> None:
                 f"{s['cpu_percent']:>5.1f}% "
                 f"{s['gpu_percent']:>5.1f}% "
                 f"{s['ane_percent']:>5.1f}% "
-                f"{compile_str} "
+                f"{cold_str} "
+                f"{warm_str} "
                 f"{predict_str}"
             )
 

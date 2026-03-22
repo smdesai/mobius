@@ -28,7 +28,7 @@ def _device_name(device: Any) -> str:
         return "gpu"
     if "NeuralEngine" in cls_name:
         return "ane"
-    return "unknown"
+    return cls_name
 
 
 def _walk_operations(block: Any) -> list[Any]:
@@ -64,7 +64,7 @@ def get_compute_plan(model_path: Path, compute_units: str) -> dict:
     CoreML.MLComputePlan.loadContentsOfURL_configuration_completionHandler_(
         url, config, completion
     )
-    event.wait()  # No timeout — large models can take 60s+ to compile
+    event.wait(timeout=30)
     plan = result_holder.get("plan")
     error = result_holder.get("error")
 

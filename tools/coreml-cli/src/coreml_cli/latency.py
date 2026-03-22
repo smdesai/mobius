@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import time
 from functools import reduce
 from pathlib import Path
@@ -13,6 +14,13 @@ import CoreML
 from Foundation import NSURL
 
 from .compute_plan import COMPUTE_UNITS
+
+
+def _clear_coreml_cache() -> None:
+    """Remove CoreML compilation cache to ensure cold compile measurement."""
+    cache_dir = Path.home() / "Library" / "Caches" / "com.apple.CoreML"
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 def _fill_multiarray(ml_array: Any, shape: tuple[int, ...], dtype: Any) -> None:
@@ -30,53 +38,21 @@ def _fill_multiarray(ml_array: Any, shape: tuple[int, ...], dtype: Any) -> None:
         ml_array.setObject_atIndexedSubscript_(val, i)
 
 
-def _infer_length_value(name: str, tensor_shapes: dict[str, tuple[int, ...]]) -> int | None:
-    """For a length-like input, find the matching tensor and return its sequence dim."""
-    base = name
-    for suffix in ("_length", "_len", "length", "len"):
-        if base.endswith(suffix):
-            base = base[: -len(suffix)]
-            break
-    else:
-        return None
-
-    base = base.rstrip("_")
-    if not base:
-        return None
-
-    for candidate in (base, base + "s", base.rstrip("s")):
-        if candidate in tensor_shapes:
-            shape = tensor_shapes[candidate]
-            if len(shape) >= 2:
-                return shape[1]
-            elif len(shape) == 1:
-                return shape[0]
-    return None
-
-
-def _make_input_provider(model_desc: Any) -> tuple[Any, bool]:
-    """Create an MLDictionaryFeatureProvider with random data for all inputs.
-
-    Returns (provider, has_state) where has_state indicates the model uses MLState.
-    """
+def _make_input_provider(model_desc: Any) -> Any:
+    """Create an MLDictionaryFeatureProvider with random data for all inputs."""
     input_desc = model_desc.inputDescriptionsByName()
     input_dict = {}
-    has_state = False
-    tensor_shapes: dict[str, tuple[int, ...]] = {}
 
     for name in input_desc:
         feat = input_desc[name]
         feat_type = feat.type()
-
-        if feat_type == CoreML.MLFeatureTypeState:
-            has_state = True
-            continue  # State is passed via MLState, not the input dict
 
         if feat_type == CoreML.MLFeatureTypeMultiArray:
             constraint = feat.multiArrayConstraint()
             shape = tuple(int(d) for d in constraint.shape())
             ml_dtype = constraint.dataType()
 
+            # Map to numpy dtype for random generation
             dtype_map = {
                 CoreML.MLMultiArrayDataTypeFloat16: np.float16,
                 CoreML.MLMultiArrayDataTypeFloat32: np.float32,
@@ -93,32 +69,33 @@ def _make_input_provider(model_desc: Any) -> tuple[Any, bool]:
 
             _fill_multiarray(ml_array, shape, np_dtype)
             input_dict[name] = CoreML.MLFeatureValue.featureValueWithMultiArray_(ml_array)
-            tensor_shapes[name] = shape
 
-    # Fix length-like scalar inputs to match their corresponding tensor dimension
-    for name, fv in input_dict.items():
-        shape = tensor_shapes.get(name)
-        if shape is None:
-            continue
-        total = reduce(lambda a, b: a * b, shape, 1)
-        if total != 1:
-            continue
-        length_val = _infer_length_value(name, tensor_shapes)
-        if length_val is not None:
-            ml_array = fv.multiArrayValue()
-            ml_array.setObject_atIndexedSubscript_(length_val, 0)
+        elif feat_type == CoreML.MLFeatureTypeState:
+            # State inputs — create zeroed multi-array from constraint
+            constraint = feat.multiArrayConstraint()
+            if constraint:
+                shape = tuple(int(d) for d in constraint.shape())
+                ml_dtype = constraint.dataType()
+                ml_array, err = CoreML.MLMultiArray.alloc().initWithShape_dataType_error_(
+                    list(shape), ml_dtype, None
+                )
+                if err:
+                    raise RuntimeError(f"Failed to create state array for '{name}': {err}")
+                input_dict[name] = CoreML.MLFeatureValue.featureValueWithMultiArray_(ml_array)
+            else:
+                pass
+        else:
+            pass
 
     provider, err = CoreML.MLDictionaryFeatureProvider.alloc().initWithDictionary_error_(
         input_dict, None
     )
     if err:
         raise RuntimeError(f"Failed to create input provider: {err}")
-    return provider, has_state
+    return provider
 
 
 def _compute_stats(times_ms: list[float]) -> dict:
-    if not times_ms:
-        return {"median_ms": 0.0, "mean_ms": 0.0, "min_ms": 0.0, "max_ms": 0.0, "std_ms": 0.0}
     times_ms.sort()
     n = len(times_ms)
     mean = sum(times_ms) / n
@@ -141,42 +118,47 @@ def measure_latency(
 ) -> dict:
     """Load model via PyObjC and measure compile + prediction latency.
 
-    Returns dict with compile_ms and prediction stats.
+    Returns dict with cold_compile_ms, warm_compile_ms, and prediction stats.
     """
     url = NSURL.fileURLWithPath_(str(model_path))
     config = CoreML.MLModelConfiguration.alloc().init()
     config.setComputeUnits_(COMPUTE_UNITS[compute_units])
 
-    # Measure compile/load time
-    compile_start = time.perf_counter()
+    # Cold compile — clear cache first
+    _clear_coreml_cache()
+    cold_start = time.perf_counter()
     model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, config, None)
-    compile_ms = (time.perf_counter() - compile_start) * 1000
+    cold_compile_ms = (time.perf_counter() - cold_start) * 1000
 
     if error or model is None:
         return {"error": str(error) if error else "failed to load model"}
 
+    # Warm compile — cache is now populated
+    del model
+    warm_start = time.perf_counter()
+    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, config, None)
+    warm_compile_ms = (time.perf_counter() - warm_start) * 1000
+
+    if error or model is None:
+        return {
+            "cold_compile_ms": round(cold_compile_ms, 3),
+            "error": str(error) if error else "failed to load model",
+        }
+
     model_desc = model.modelDescription()
 
     try:
-        provider, has_state = _make_input_provider(model_desc)
+        provider = _make_input_provider(model_desc)
     except Exception as e:
         return {"error": f"failed to create inputs: {e}"}
 
-    state = None
-    if has_state:
-        state = model.makeState()
-
-    def _predict():
-        if state is not None:
-            return model.predictionFromFeatures_usingState_error_(provider, state, None)
-        return model.predictionFromFeatures_error_(provider, None)
-
     # Warmup
     for _ in range(warmup):
-        result, err = _predict()
+        result, err = model.predictionFromFeatures_error_(provider, None)
         if err:
             return {
-                "compile_ms": round(compile_ms, 3),
+                "cold_compile_ms": round(cold_compile_ms, 3),
+                "warm_compile_ms": round(warm_compile_ms, 3),
                 "error": f"prediction failed: {err}",
             }
 
@@ -184,13 +166,14 @@ def measure_latency(
     times_ms = []
     for _ in range(iterations):
         start = time.perf_counter()
-        _predict()
+        model.predictionFromFeatures_error_(provider, None)
         elapsed = (time.perf_counter() - start) * 1000
         times_ms.append(elapsed)
 
     stats = _compute_stats(times_ms)
     return {
-        "compile_ms": round(compile_ms, 3),
+        "cold_compile_ms": round(cold_compile_ms, 3),
+        "warm_compile_ms": round(warm_compile_ms, 3),
         **stats,
         "iterations": iterations,
     }

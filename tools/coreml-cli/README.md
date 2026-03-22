@@ -20,23 +20,23 @@ OS:      macOS 26.3.1
   outputs: decoder(Float32 1×640×1), h_out(Float32 1×1×640),
            c_out(Float32 1×1×640)
 
-  Compute Unit                 CPU    GPU    ANE   Compile   Predict
-  ────────────────────────────────────────────────────────────────
-  all                       100.0%   0.0%   0.0%       6ms    0.21ms
-  cpu_only                  100.0%   0.0%   0.0%       5ms    0.24ms
-  cpu_and_gpu               100.0%   0.0%   0.0%       5ms    0.21ms
-  cpu_and_neural_engine     100.0%   0.0%   0.0%       5ms    0.21ms
+  Compute Unit                 CPU    GPU    ANE      Cold      Warm   Predict
+  ──────────────────────────────────────────────────────────────────────────
+  all                       100.0%   0.0%   0.0%      35ms       6ms    0.23ms
+  cpu_only                  100.0%   0.0%   0.0%      26ms       5ms    0.22ms
+  cpu_and_gpu               100.0%   0.0%   0.0%      30ms       5ms    0.21ms
+  cpu_and_neural_engine     100.0%   0.0%   0.0%      31ms       5ms    0.22ms
 
 ── streaming_encoder ──────────────────────────────────────────────────────────
   Mixed (Float16, Float32, Int32) | torch==2.4.0 | coremltools 8.3.0
   ...
 
-  Compute Unit                 CPU    GPU    ANE   Compile   Predict
-  ────────────────────────────────────────────────────────────────
-  all                         0.0% 100.0%   0.0%      68ms    6.74ms
-  cpu_only                  100.0%   0.0%   0.0%      46ms    4.88ms
-  cpu_and_gpu                 0.0% 100.0%   0.0%      79ms    6.71ms
-  cpu_and_neural_engine       1.2%   0.0%  98.8%      82ms    2.88ms
+  Compute Unit                 CPU    GPU    ANE      Cold      Warm   Predict
+  ──────────────────────────────────────────────────────────────────────────
+  all                         0.0% 100.0%   0.0%     947ms      42ms    5.34ms
+  cpu_only                  100.0%   0.0%   0.0%     538ms      42ms    4.72ms
+  cpu_and_gpu                 0.0% 100.0%   0.0%     444ms      45ms    6.75ms
+  cpu_and_neural_engine       1.2%   0.0%  98.8%    5170ms      50ms    2.86ms
 ```
 
 ## Install
@@ -90,7 +90,8 @@ uv run coreml-cli model.mlmodelc --debug
 For each model and compute unit configuration (`all`, `cpu_only`, `cpu_and_gpu`, `cpu_and_neural_engine`):
 
 - **Device assignment** — % of operations on CPU, GPU, and ANE (Neural Engine)
-- **Compile time** — time to load and compile the model for that configuration
+- **Cold compile time** — time to load and compile with no cached compilation (CoreML cache cleared)
+- **Warm compile time** — time to load with cached compilation
 - **Predict latency** — median prediction time (5 warmup + 10 timed iterations)
 - **Model metadata** — precision, I/O shapes, author, description, coremltools version
 - **Per-op breakdown** (`--ops`) — each operation's name, type, assigned device, and cost weight
