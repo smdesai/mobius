@@ -91,15 +91,19 @@ def emit_table(data: dict[str, Any]) -> None:
             items = [_format_io_item(i) for i in meta["outputs"]]
             print(_wrap_items("outputs:", items, width))
 
+        # Cold compile (once per model)
+        cold_ms = m.get("cold_compile_ms")
+        if cold_ms is not None:
+            print(f"  cold compile: {cold_ms:.0f}ms")
+
         # Benchmark table
         print()
-        print(f"  {'Compute Unit':<25s} {'CPU':>6s} {'GPU':>6s} {'ANE':>6s} {'Cold Compile':>14s} {'Warm Compile':>14s} {'Predict':>9s}")
-        print(f"  {'─' * 84}")
+        print(f"  {'Compute Unit':<25s} {'CPU':>6s} {'GPU':>6s} {'ANE':>6s} {'Compile':>9s} {'Predict':>9s}")
+        print(f"  {'─' * 64}")
         for r in m["results"]:
             s = r["summary"]
             lat = r.get("latency", {})
-            cold_str = f"{lat['cold_compile_ms']:>12.0f}ms" if "cold_compile_ms" in lat else f"{'err':>14s}"
-            warm_str = f"{lat['warm_compile_ms']:>12.0f}ms" if "warm_compile_ms" in lat else f"{'err':>14s}"
+            compile_str = f"{lat['compile_ms']:>7.0f}ms" if "compile_ms" in lat else f"{'err':>9s}"
             if "median_ms" in lat:
                 predict_str = f"{lat['median_ms']:>7.2f}ms"
             elif "error" in lat:
@@ -111,8 +115,7 @@ def emit_table(data: dict[str, Any]) -> None:
                 f"{s['cpu_percent']:>5.1f}% "
                 f"{s['gpu_percent']:>5.1f}% "
                 f"{s['ane_percent']:>5.1f}% "
-                f"{cold_str} "
-                f"{warm_str} "
+                f"{compile_str} "
                 f"{predict_str}"
             )
 

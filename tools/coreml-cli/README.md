@@ -9,8 +9,9 @@ Replicates what Xcode's CoreML Performance Report does, but from the terminal an
 ```
 $ coreml-cli test_models/160ms/
 
-Device:  Apple M4 Pro (arm64)
-OS:      macOS 26.3.1
+Device:    Apple M4 Pro (arm64)
+RAM:       48GB
+OS:        macOS 26.3.1
 
 ── decoder ────────────────────────────────────────────────────────────────────
   Parakeet EOU decoder (RNNT prediction network) (Fluid Inference)
@@ -19,24 +20,26 @@ OS:      macOS 26.3.1
            c_in(Float32 1×1×640)
   outputs: decoder(Float32 1×640×1), h_out(Float32 1×1×640),
            c_out(Float32 1×1×640)
+  cold compile: 128ms
 
-  Compute Unit                 CPU    GPU    ANE   Cold Compile   Warm Compile   Predict
-  ────────────────────────────────────────────────────────────────────────────────────
-  all                       100.0%   0.0%   0.0%           28ms            6ms    0.22ms
-  cpu_only                  100.0%   0.0%   0.0%           29ms            6ms    0.22ms
-  cpu_and_gpu               100.0%   0.0%   0.0%           31ms            5ms    0.22ms
-  cpu_and_neural_engine     100.0%   0.0%   0.0%           29ms            5ms    0.23ms
+  Compute Unit                 CPU    GPU    ANE   Compile   Predict
+  ────────────────────────────────────────────────────────────────
+  all                       100.0%   0.0%   0.0%       7ms    0.22ms
+  cpu_only                  100.0%   0.0%   0.0%       6ms    0.22ms
+  cpu_and_gpu               100.0%   0.0%   0.0%       6ms    0.23ms
+  cpu_and_neural_engine     100.0%   0.0%   0.0%       5ms    0.26ms
 
 ── streaming_encoder ──────────────────────────────────────────────────────────
   Mixed (Float16, Float32, Int32) | torch==2.4.0 | coremltools 8.3.0
   ...
+  cold compile: 3512ms
 
-  Compute Unit                 CPU    GPU    ANE   Cold Compile   Warm Compile   Predict
-  ────────────────────────────────────────────────────────────────────────────────────
-  all                         0.0% 100.0%   0.0%          874ms           42ms    6.79ms
-  cpu_only                  100.0%   0.0%   0.0%          381ms           43ms    4.83ms
-  cpu_and_gpu                 0.0% 100.0%   0.0%          466ms           42ms    6.71ms
-  cpu_and_neural_engine       1.2%   0.0%  98.8%         7249ms           46ms    2.81ms
+  Compute Unit                 CPU    GPU    ANE   Compile   Predict
+  ────────────────────────────────────────────────────────────────
+  all                         0.0% 100.0%   0.0%      46ms    6.78ms
+  cpu_only                  100.0%   0.0%   0.0%      47ms    5.45ms
+  cpu_and_gpu                 0.0% 100.0%   0.0%      49ms    6.67ms
+  cpu_and_neural_engine       1.2%   0.0%  98.8%      51ms    2.82ms
 ```
 
 ## Install
@@ -87,11 +90,14 @@ uv run coreml-cli model.mlmodelc --debug
 
 ### Benchmark mode (default)
 
-For each model and compute unit configuration (`all`, `cpu_only`, `cpu_and_gpu`, `cpu_and_neural_engine`):
+For each model:
+
+- **Cold compile time** — measured once per model by bypassing the E5 compilation cache (private API: `setExperimentalMLProgramEncryptedCacheUsage_(0)`). Reflects what users experience the first time the model runs on their device — if this is too high, the model may not be usable. For a true first-launch measurement, restart `ANECompilerService` before benchmarking: `sudo killall ANECompilerService`.
+
+For each compute unit configuration (`all`, `cpu_only`, `cpu_and_gpu`, `cpu_and_neural_engine`):
 
 - **Device assignment** — % of operations on CPU, GPU, and ANE (Neural Engine)
-- **Cold compile time** — first-ever load with no cached compilation (CoreML cache cleared). Reflects what the user experiences the first time the model runs on their device — if this is too high, the model may not be usable.
-- **Warm compile time** — load time with cached compilation. This is the cost paid on every app launch after the first.
+- **Compile time** — cached load time (E5 bundle cache populated). This is the cost paid on every app launch.
 - **Predict latency** — median prediction time (5 warmup + 10 timed iterations)
 - **Model metadata** — precision, I/O shapes, author, description, coremltools version
 - **Per-op breakdown** (`--ops`) — each operation's name, type, assigned device, and cost weight

@@ -306,8 +306,8 @@ uv run coreml-cli path/to/build/model.mlmodelc
 
 This shows, for each compute-unit configuration (`all`, `cpu_only`, `cpu_and_gpu`, `cpu_and_neural_engine`):
 - **Device assignment** — % of operations on CPU, GPU, and ANE
-- **Cold compile time** — first-ever load with no cached compilation (CoreML cache cleared). This is what users experience the first time the model runs on their device. If cold compile is too high (e.g., several seconds), the model may not be usable in practice.
-- **Warm compile time** — load time with cached compilation. This is the cost paid on every app launch after the first.
+- **Cold compile time** — measured once per model by bypassing the compilation cache. Reflects what users experience the first time the model runs on their device — if this is too high (e.g., several seconds), the model may not be usable in practice.
+- **Compile time** — cached load time per compute unit config. This is the cost paid on every app launch.
 - **Predict latency** — median inference time
 
 Use `--ops` to see which specific operations fall back to CPU (common with unsupported ANE ops). Use `--detailed` for private API data including backend support per op and why certain backends were rejected.

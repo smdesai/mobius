@@ -115,45 +115,47 @@ def _compute_stats(times_ms: list[float]) -> dict:
     }
 
 
+def measure_cold_compile(model_path: Path) -> float:
+    """Measure cold compile time by bypassing the E5 compilation cache.
+
+    Uses private API setExperimentalMLProgramEncryptedCacheUsage_(0).
+    For a true first-launch measurement, restart ANECompilerService first:
+        sudo killall ANECompilerService
+    """
+    url = NSURL.fileURLWithPath_(str(model_path))
+    cold_config = _make_cold_config(CoreML.MLComputeUnitsAll)
+    cold_start = time.perf_counter()
+    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, cold_config, None)
+    cold_ms = (time.perf_counter() - cold_start) * 1000
+    if error or model is None:
+        return -1.0
+    return cold_ms
+
+
 def measure_latency(
     model_path: Path,
     compute_units: str,
     warmup: int = 5,
     iterations: int = 10,
 ) -> dict:
-    """Load model via PyObjC and measure compile + prediction latency.
-
-    Returns dict with cold_compile_ms, warm_compile_ms, and prediction stats.
-    """
+    """Load model via PyObjC and measure warm compile + prediction latency."""
     url = NSURL.fileURLWithPath_(str(model_path))
-    cu_val = COMPUTE_UNITS[compute_units]
+    config = CoreML.MLModelConfiguration.alloc().init()
+    config.setComputeUnits_(COMPUTE_UNITS[compute_units])
 
-    # Cold compile — bypass E5 compilation cache via private API
-    cold_config = _make_cold_config(cu_val)
-    cold_start = time.perf_counter()
-    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, cold_config, None)
-    cold_compile_ms = (time.perf_counter() - cold_start) * 1000
+    # Prime — first load populates E5 bundle cache for this compute unit config
+    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, config, None)
+    if error or model is None:
+        return {"error": str(error) if error else "failed to load model"}
+    del model
+
+    # Warm compile — measure cached reload
+    compile_start = time.perf_counter()
+    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, config, None)
+    compile_ms = (time.perf_counter() - compile_start) * 1000
 
     if error or model is None:
         return {"error": str(error) if error else "failed to load model"}
-
-    # Prime the cache — load with default config (populates E5 bundle cache)
-    del model
-    warm_config = CoreML.MLModelConfiguration.alloc().init()
-    warm_config.setComputeUnits_(cu_val)
-    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, warm_config, None)
-
-    # Warm compile — measure reload from cache
-    del model
-    warm_start = time.perf_counter()
-    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, warm_config, None)
-    warm_compile_ms = (time.perf_counter() - warm_start) * 1000
-
-    if error or model is None:
-        return {
-            "cold_compile_ms": round(cold_compile_ms, 3),
-            "error": str(error) if error else "failed to load model",
-        }
 
     model_desc = model.modelDescription()
 
@@ -167,8 +169,7 @@ def measure_latency(
         result, err = model.predictionFromFeatures_error_(provider, None)
         if err:
             return {
-                "cold_compile_ms": round(cold_compile_ms, 3),
-                "warm_compile_ms": round(warm_compile_ms, 3),
+                "compile_ms": round(compile_ms, 3),
                 "error": f"prediction failed: {err}",
             }
 
@@ -182,8 +183,7 @@ def measure_latency(
 
     stats = _compute_stats(times_ms)
     return {
-        "cold_compile_ms": round(cold_compile_ms, 3),
-        "warm_compile_ms": round(warm_compile_ms, 3),
+        "compile_ms": round(compile_ms, 3),
         **stats,
         "iterations": iterations,
     }

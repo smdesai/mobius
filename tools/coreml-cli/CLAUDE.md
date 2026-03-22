@@ -36,6 +36,7 @@ Example: MLComputeUnitsCPUOnly=0 on macOS 26 vs 1 on older versions.
 - `MLMultiArray.dataPointer()` returns `objc.varlist`, not int — use `setObject_atIndexedSubscript_` to fill values
 - `segmentationAnalyticsAndReturnError_` returns single value (not tuple) — don't unpack
 - `SelectedBackend` from private API has embedded quotes like `'"bnns"'` — strip them
+- `MLModelConfiguration.setExperimentalMLProgramEncryptedCacheUsage_(0)` bypasses the E5 on-disk compilation cache (used for cold compile measurement). The ANECompilerService daemon also caches in memory — for true first-launch timing, restart it: `sudo killall ANECompilerService`
 
 ## Design Principles
 - Agent-first: table output default, `--json` for structured. No rich/colorama.

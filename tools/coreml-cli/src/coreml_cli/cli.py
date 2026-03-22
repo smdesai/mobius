@@ -15,7 +15,7 @@ import typer
 
 from .compute_plan import COMPUTE_UNITS, get_compute_plan
 from .fallback import analyze_fallback
-from .latency import measure_latency
+from .latency import measure_cold_compile, measure_latency
 from .metadata import get_model_metadata
 from .model_loader import discover_models
 from .output import emit_fallback_table, emit_json, emit_table
@@ -130,6 +130,13 @@ def bench(
 
     for model in models:
         _log(f"Profiling {model.name}...")
+
+        # Cold compile — once per model (bypass E5 cache via private API)
+        _log(f"  measuring cold compile...")
+        cold_compile_ms = measure_cold_compile(model)
+        if cold_compile_ms >= 0:
+            _log(f"  cold_compile={cold_compile_ms:.1f}ms")
+
         model_results = []
 
         for unit_config in unit_configs:
@@ -150,8 +157,8 @@ def bench(
                 model, unit_config, iterations=iterations
             )
             lat = result["latency"]
-            if "cold_compile_ms" in lat:
-                _log(f"    cold_compile={lat['cold_compile_ms']:.1f}ms warm_compile={lat['warm_compile_ms']:.1f}ms")
+            if "compile_ms" in lat:
+                _log(f"    compile={lat['compile_ms']:.1f}ms")
             if "median_ms" in lat:
                 _log(f"    predict median={lat['median_ms']:.1f}ms")
             elif "error" in lat:
@@ -163,6 +170,7 @@ def bench(
             "model_path": str(model),
             "model_name": model.stem,
             "metadata": get_model_metadata(model),
+            "cold_compile_ms": round(cold_compile_ms, 3) if cold_compile_ms >= 0 else None,
             "results": model_results,
         })
 
