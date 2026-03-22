@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 import time
 from functools import reduce
 from pathlib import Path
@@ -16,11 +15,17 @@ from Foundation import NSURL
 from .compute_plan import COMPUTE_UNITS
 
 
-def _clear_coreml_cache() -> None:
-    """Remove CoreML compilation cache to ensure cold compile measurement."""
-    cache_dir = Path.home() / "Library" / "Caches" / "com.apple.CoreML"
-    if cache_dir.exists():
-        shutil.rmtree(cache_dir, ignore_errors=True)
+def _make_cold_config(compute_units_val: int) -> Any:
+    """Create MLModelConfiguration that bypasses compilation cache.
+
+    Uses private API: setExperimentalMLProgramEncryptedCacheUsage_(0)
+    to disable the E5 runtime's encrypted bundle cache, forcing a full
+    recompilation from the MIL program.
+    """
+    config = CoreML.MLModelConfiguration.alloc().init()
+    config.setComputeUnits_(compute_units_val)
+    config.setExperimentalMLProgramEncryptedCacheUsage_(0)
+    return config
 
 
 def _fill_multiarray(ml_array: Any, shape: tuple[int, ...], dtype: Any) -> None:
@@ -121,22 +126,27 @@ def measure_latency(
     Returns dict with cold_compile_ms, warm_compile_ms, and prediction stats.
     """
     url = NSURL.fileURLWithPath_(str(model_path))
-    config = CoreML.MLModelConfiguration.alloc().init()
-    config.setComputeUnits_(COMPUTE_UNITS[compute_units])
+    cu_val = COMPUTE_UNITS[compute_units]
 
-    # Cold compile — clear cache first
-    _clear_coreml_cache()
+    # Cold compile — bypass E5 compilation cache via private API
+    cold_config = _make_cold_config(cu_val)
     cold_start = time.perf_counter()
-    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, config, None)
+    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, cold_config, None)
     cold_compile_ms = (time.perf_counter() - cold_start) * 1000
 
     if error or model is None:
         return {"error": str(error) if error else "failed to load model"}
 
-    # Warm compile — cache is now populated
+    # Prime the cache — load with default config (populates E5 bundle cache)
+    del model
+    warm_config = CoreML.MLModelConfiguration.alloc().init()
+    warm_config.setComputeUnits_(cu_val)
+    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, warm_config, None)
+
+    # Warm compile — measure reload from cache
     del model
     warm_start = time.perf_counter()
-    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, config, None)
+    model, error = CoreML.MLModel.modelWithContentsOfURL_configuration_error_(url, warm_config, None)
     warm_compile_ms = (time.perf_counter() - warm_start) * 1000
 
     if error or model is None:
