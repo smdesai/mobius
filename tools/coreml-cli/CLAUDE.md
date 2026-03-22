@@ -6,8 +6,10 @@ Uses PyObjC to call CoreML framework APIs (both public and private/reverse-engin
 Managed by `uv`. Entry point: `coreml-cli = "coreml_cli.cli:app"`.
 
 ## Commands
-- `uv run coreml-cli test_models/160ms/` — run benchmarks on all models in directory
-- `uv run coreml-cli <model> --json` — JSON output
+- `uv run coreml-cli <model>` — benchmark: latency, compile time, device % across all compute unit configs
+- `uv run coreml-cli <model> --fallback` — ANE optimization: show CPU fallback ops grouped by rejection reason
+- `uv run coreml-cli <model> --fallback --json` — structured fallback analysis for agent parsing
+- `uv run coreml-cli <model> --json` — full benchmark as JSON
 - `uv run coreml-cli <model> --ops` — include per-operation breakdown
 - `uv run coreml-cli <model> --detailed` — private API data per op (implies --ops)
 - `uv run coreml-cli <model> --debug` — progress logs to stderr
@@ -17,10 +19,11 @@ Managed by `uv`. Entry point: `coreml-cli = "coreml_cli.cli:app"`.
 - `cli.py` — Typer CLI, wiring, merge logic
 - `compute_plan.py` — Public MLComputePlan API (device assignment + cost per op)
 - `private_profiler.py` — Private MLE5Engine API (backend support, estimated runtimes)
+- `fallback.py` — Analyze CPU fallback ops, group by ANE rejection reason
 - `latency.py` — Prediction timing via PyObjC MLModel (5 warmup + N iterations)
 - `metadata.py` — Model metadata from metadata.json + MLModel description
 - `model_loader.py` — Discover .mlmodelc/.mlpackage, compile via coremltools
-- `output.py` — Table (default) and JSON formatters
+- `output.py` — Table (default), fallback table, and JSON formatters
 
 ## Critical: macOS 26 (Tahoe) Enum Changes
 CoreML enum values differ from older macOS. NEVER hardcode enum ints.
