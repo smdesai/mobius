@@ -64,7 +64,7 @@ def get_compute_plan(model_path: Path, compute_units: str) -> dict:
     CoreML.MLComputePlan.loadContentsOfURL_configuration_completionHandler_(
         url, config, completion
     )
-    event.wait(timeout=30)
+    event.wait()  # No timeout — large models can take 60s+ to compile
     plan = result_holder.get("plan")
     error = result_holder.get("error")
 
