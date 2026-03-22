@@ -47,8 +47,7 @@ Things to keep in mind:
 Profile CoreML models from the command line — see per-operation compute device assignments (CPU/GPU/ANE), compilation time, and prediction latency across all `MLComputeUnits` configurations. Useful after converting a model to verify ANE compatibility and measure performance.
 
 ```bash
-cd tools/coreml-cli && uv sync
-uv run coreml-cli path/to/model.mlmodelc
+uvx --from "coreml-cli @ git+https://github.com/FluidInference/mobius.git#subdirectory=tools/coreml-cli" coreml-cli path/to/model.mlmodelc
 ```
 
 See [`tools/coreml-cli/README.md`](tools/coreml-cli/README.md) for full usage.
