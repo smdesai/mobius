@@ -4,8 +4,6 @@ A command-line tool to profile CoreML models — showing per-operation compute d
 
 Replicates what Xcode's CoreML Performance Report does, but from the terminal and designed for programmatic use by coding agents.
 
-> Weekend project, built mostly with Claude Code.
-
 ## Example
 
 ```
@@ -103,6 +101,8 @@ Heavily inspired by:
 - **[freedomtan/coreml_modelc_profling](https://github.com/freedomtan/coreml_modelc_profling)** — per-operation profiling using both public `MLComputePlan` and undocumented `MLE5Engine` APIs. Their Objective-C implementation was the direct reference for our private profiler.
 
 ## Caveats
+
+**Note that this was a weekend project, built with Claude Code.**
 
 - **Hardware-specific** — compute plans and compilation are tied to the local chip. Results on an M4 Pro will differ from an M1 or A17 Pro.
 - **Private APIs may break** — the `MLE5Engine` path (`--detailed`) uses undocumented APIs that may change across macOS versions.
