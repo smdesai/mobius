@@ -360,3 +360,33 @@ Note: The CodeDecoder is larger than the reference implementation (1.7 GB vs 445
 | 8 | EnumeratedShapes dynamic padding | Conversion failure | CausalConvNet has kernel-dependent padding | Use fixed T=125 instead of variable shapes |
 | 9 | Standalone mel mismatch | Speaker embedding cosine only 0.82 | Our mel filterbank didn't match qwen_tts implementation | Use official extract_speaker_embedding() method |
 | 10 | MultiCodeEmbedder segfault | Crash during torch.jit.trace | 30720×1024 embedding table memory pressure | Process models separately with gc.collect() |
+
+---
+
+## Next: Reduce CodeDecoder Size (1,775 MB → ~445 MB)
+
+The CodeDecoder is 4x larger than the reference implementation (1,775 MB vs 445 MB). This is the single biggest optimization target — it accounts for 65% of our total model size.
+
+### Current size comparison
+
+| Model | Reference | Ours | Gap |
+|-------|-----------|------|-----|
+| CodeDecoder | 445 MB | 1,775 MB | **4x** |
+| TextProjector | 317 MB | 635 MB | **2x** |
+| MultiCodeDecoder | 105 MB | 110 MB | ~1x |
+| SpeechDecoder | 109 MB | 115 MB | ~1x |
+| CodeEmbedder | 6 MB | 6 MB | 1x |
+| MultiCodeEmbedder | 60 MB | 63 MB | ~1x |
+| **Total** | **~1,042 MB** | **2,704 MB** | **2.6x** |
+
+### Likely causes of the CodeDecoder size gap
+- Our version stores full KV cache state explicitly in the model weights
+- The reference uses a more efficient stateful model pattern (CoreML state API)
+- The reference TextProjector may use more aggressive quantization or a smaller embedding table
+
+### TODO
+- [ ] Investigate the reference CodeDecoder's stateful pattern (CoreML state API vs explicit KV tensors)
+- [ ] Investigate why TextProjector is 2x (317 vs 635 MB)
+- [ ] Trial: convert CodeDecoder using CoreML stateful model API to reduce KV cache overhead
+- [ ] Trial: check if we're storing unnecessary intermediate weights or duplicate parameters
+- [ ] Document all attempts and results here
