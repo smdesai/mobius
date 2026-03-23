@@ -1,6 +1,6 @@
 # Qwen3-TTS CoreML Conversion: Trials and Errors
 
-A chronological record of every issue encountered while converting Qwen3-TTS 0.6B from PyTorch to CoreML, reducing the model from ~5 GB to 2.5 GB, and fixing the robotic audio output.
+A chronological record of every issue encountered while converting Qwen3-TTS 0.6B from PyTorch to CoreML, reducing the model from ~5 GB to ~1 GB, and fixing the robotic audio output.
 
 ---
 
@@ -330,19 +330,68 @@ audio = out["audio"].astype(np.float32).flatten()[:num_frames * 1920]
 
 ---
 
+## Phase 11: Model Size Reduction — 2,704 MB → 1,056 MB
+
+After Phase 10, the models worked correctly but were 2.6x larger than the reference implementation. The biggest offenders were CodeDecoder (1,775 MB vs 445 MB) and TextProjector (635 MB vs 317 MB).
+
+### Root cause investigation
+
+Checked the `weight.bin` sizes inside each `.mlpackage`:
+
+| Model | weight.bin | Expected (W8A16) | Actual bytes/param |
+|-------|-----------|-------------------|-------------------|
+| CodeDecoder | 1,774.5 MB | ~447 MB | 3.97 (FP32) |
+| TextProjector | 634.9 MB | ~317 MB | 2.0 (FP16) |
+
+**Root cause**: During the KV cache bug fix (Phase 5), both models were reconverted but the `--quantize-w8` flag was accidentally omitted. The CodeDecoder weights were stored as FP32 (4 bytes/param) and TextProjector as FP16 (2 bytes/param) instead of W8A16 palettized (1 byte/param).
+
+### Fix
+
+Reconverted both models with `--quantize-w8`:
+
+```bash
+python convert_argmax_code_decoder.py --model-path ./model_0.6b --output-dir ./argmax_models --quantize-w8 --skip-verify
+python convert_argmax_text_projector.py --model-path ./model_0.6b --output-dir ./argmax_models --quantize-w8
+```
+
+TextProjector verification: max diff 0.008387 vs PyTorch (normal for W8A16 palettization).
+
+### Results
+
+| Model | Before | After | Reduction |
+|-------|--------|-------|-----------|
+| CodeDecoder | 1,775 MB | 445 MB | 4.0x |
+| TextProjector | 635 MB | 318 MB | 2.0x |
+| **Total** | **2,704 MB** | **1,056 MB** | **2.6x** |
+
+### Audio quality verification
+
+Ran inference with the newly quantized models — both English and Chinese produce correct Whisper transcriptions:
+
+| Language | Input | Whisper Transcript | Match |
+|----------|-------|--------------------|-------|
+| English | "The quick brown fox jumps over the lazy dog." | "The quick brown fox jumps over the lazy dog." | Perfect |
+| Chinese | "今天天气真好，我们一起去公园散步吧。" | "今天天氣真好,我們一起去公園散步吧" | Perfect (simplified↔traditional is Whisper) |
+| Chinese | "人工智能正在改变我们的生活方式，未来将更加美好。" | "人工智能正在改变我们的生活方式,未来将更加美好。" | Perfect |
+| Chinese | "我喜欢在周末和朋友们一起爬山，山顶的风景非常壮观。" | "我喜欢在周末和朋友们一起爬山山顶的风景非常壮观" | Perfect |
+
+Model load time also improved: ~355s (down from ~1220s with the old 2.7 GB models).
+
+---
+
 ## Final Model Sizes
 
 | Model | Size | Quantization | Precision |
 |-------|------|-------------|-----------|
-| TextProjector | 605 MB | W8A16 | FLOAT16 |
+| TextProjector | 318 MB | W8A16 | FLOAT16 |
 | CodeEmbedder | 6 MB | W16A16 | FLOAT16 |
-| MultiCodeEmbedder | 60 MB | W16A16 | FLOAT16 |
-| CodeDecoder | 1,693 MB | W8A16 | FLOAT16 |
-| MultiCodeDecoder | 105 MB | W8A16 | FLOAT32 |
-| SpeechDecoder | 109 MB | W8A16 | FLOAT16 |
-| **Total** | **2,579 MB (2.52 GB)** | | |
+| MultiCodeEmbedder | 63 MB | W16A16 | FLOAT16 |
+| CodeDecoder | 445 MB | W8A16 | FLOAT16 |
+| MultiCodeDecoder | 110 MB | W8A16 | FLOAT32 |
+| SpeechDecoder | 115 MB | W8A16 | FLOAT16 |
+| **Total** | **~1,056 MB (~1.0 GB)** | | |
 
-Note: The CodeDecoder is larger than the reference implementation (1.7 GB vs 445 MB) because our version stores full KV cache state. Further optimization is possible.
+Matches reference implementation total (~1,042 MB).
 
 ---
 
@@ -360,33 +409,4 @@ Note: The CodeDecoder is larger than the reference implementation (1.7 GB vs 445
 | 8 | EnumeratedShapes dynamic padding | Conversion failure | CausalConvNet has kernel-dependent padding | Use fixed T=125 instead of variable shapes |
 | 9 | Standalone mel mismatch | Speaker embedding cosine only 0.82 | Our mel filterbank didn't match qwen_tts implementation | Use official extract_speaker_embedding() method |
 | 10 | MultiCodeEmbedder segfault | Crash during torch.jit.trace | 30720×1024 embedding table memory pressure | Process models separately with gc.collect() |
-
----
-
-## Next: Reduce CodeDecoder Size (1,775 MB → ~445 MB)
-
-The CodeDecoder is 4x larger than the reference implementation (1,775 MB vs 445 MB). This is the single biggest optimization target — it accounts for 65% of our total model size.
-
-### Current size comparison
-
-| Model | Reference | Ours | Gap |
-|-------|-----------|------|-----|
-| CodeDecoder | 445 MB | 1,775 MB | **4x** |
-| TextProjector | 317 MB | 635 MB | **2x** |
-| MultiCodeDecoder | 105 MB | 110 MB | ~1x |
-| SpeechDecoder | 109 MB | 115 MB | ~1x |
-| CodeEmbedder | 6 MB | 6 MB | 1x |
-| MultiCodeEmbedder | 60 MB | 63 MB | ~1x |
-| **Total** | **~1,042 MB** | **2,704 MB** | **2.6x** |
-
-### Likely causes of the CodeDecoder size gap
-- Our version stores full KV cache state explicitly in the model weights
-- The reference uses a more efficient stateful model pattern (CoreML state API)
-- The reference TextProjector may use more aggressive quantization or a smaller embedding table
-
-### TODO
-- [ ] Investigate the reference CodeDecoder's stateful pattern (CoreML state API vs explicit KV tensors)
-- [ ] Investigate why TextProjector is 2x (317 vs 635 MB)
-- [ ] Trial: convert CodeDecoder using CoreML stateful model API to reduce KV cache overhead
-- [ ] Trial: check if we're storing unnecessary intermediate weights or duplicate parameters
-- [ ] Document all attempts and results here
+| 11 | Missing W8A16 quantization | CodeDecoder 4x too large, TextProjector 2x too large | `--quantize-w8` flag omitted during reconversion after KV cache fix | Reconvert both with `--quantize-w8` |
